@@ -5,3 +5,6 @@
 [submodule "SERE/ThirdParty/SDL"]
 	path = SERE/ThirdParty/SDL
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "SERE/ThirdParty/glew"]
+	path = SERE/ThirdParty/glew
+	url = https://github.com/Perlmint/glew-cmake.git
