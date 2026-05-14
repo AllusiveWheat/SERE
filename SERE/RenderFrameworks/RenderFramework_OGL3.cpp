@@ -2,18 +2,12 @@
 
 #include <Imgui/imgui_impl_opengl3.h>
 #include <Imgui/imgui_impl_sdl3.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_opengl.h>
+
+UINT WinResizeWidth = 0, WinResizeHeight = 0;
 
 
-
-bool CreateDeviceWGL() {
-    return true;
-}
-void CleanupDeviceWGL() {
-
-}
-void ResetDeviceWGL() {
-
-}
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 RenderFramework_OGL3::RenderFramework_OGL3()
@@ -23,11 +17,16 @@ RenderFramework_OGL3::RenderFramework_OGL3()
     }
     SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
-    window = SDL_CreateWindow("SERE", 1280, 800, window_flags);
-    glContext = SDL_GL_CreateContext(window);
-    SDL_PropertiesID props = SDL_GetWindowProperties(window);
-   
-   
+    
+	const char* glsl_version = "#version 130";
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+
+	window = SDL_CreateWindow("SERE", 1280, 800, window_flags);
+	glContext = SDL_GL_CreateContext(window);
+	SDL_PropertiesID props = SDL_GetWindowProperties(window);
     SDL_GL_MakeCurrent(window, glContext);
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     SDL_ShowWindow(window);
@@ -36,7 +35,9 @@ RenderFramework_OGL3::RenderFramework_OGL3()
     
     // Setup Platform/Renderer backends
     ImGui_ImplSDL3_InitForOpenGL(window, glContext);
-    ImGui_ImplOpenGL3_Init("#version 450 core");
+	if (!ImGui_ImplOpenGL3_Init(glsl_version)) {
+		SDL_Log("Failed to initialize ImGui OpenGL3 backend");
+	}
 
 }
 
@@ -46,19 +47,60 @@ RenderFramework_OGL3::~RenderFramework_OGL3()
 
 bool RenderFramework_OGL3::ShouldMainLoopRun()
 {
-	return false;
+	SDL_Event event;
+	while (SDL_PollEvent(&event))
+	{
+		if (event.type == SDL_EVENT_KEY_DOWN)
+		{
+			if (event.key.key == SDLK_LALT || event.key.key == SDLK_RALT)
+				break;
+		}
+		if (event.type == SDL_EVENT_QUIT)
+			return false;
+		if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window))
+			return false;
+		if (event.type == SDL_EVENT_WINDOW_RESIZED && event.window.windowID == SDL_GetWindowID(window))
+		{
+			// Release all outstanding references to the swap chain's buffers before resizing.
+			WinResizeWidth = (UINT)event.window.data1; // Queue resize
+			WinResizeHeight = (UINT)event.window.data2;
+		}
+		ImGui_ImplSDL3_ProcessEvent(&event);
+	}
+	return true;
 }
 
 bool RenderFramework_OGL3::ImGuiStartFrame()
 {
-	return false;
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplSDL3_NewFrame();
+	if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
+	{
+		SDL_Delay(10);
+		return false;
+	}
+
+	return true;
 }
 
 void RenderFramework_OGL3::ImGuiEndFrame()
-{}
+{
+	const ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+	glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
+	glClearColor(clear_color_with_alpha[0], clear_color_with_alpha[1], clear_color_with_alpha[2], clear_color_with_alpha[3]);
+	glClear(GL_COLOR_BUFFER_BIT);
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	SDL_GL_SwapWindow(window);
+}
 
 void RenderFramework_OGL3::ImGuiDeInit()
-{}
+{
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplSDL3_Shutdown();
+	SDL_GL_DestroyContext(glContext);
+	SDL_DestroyWindow(window);
+}
 
 void RenderFramework_OGL3::RuiClearFrame()
 {}
