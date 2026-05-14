@@ -152,7 +152,8 @@ void RenderFramework_OGL3::RuiClearFrame()
 
 void RenderFramework_OGL3::DrawIndexed(uint32_t count, uint32_t start, size_t * resources)
 {
-	//glDrawElementsInstanced(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(start * sizeof(uint16_t)), 1);
+    
+	glDrawElementsInstanced(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(start * sizeof(uint16_t)), 1);
 }
 
 size_t RenderFramework_OGL3::CreateShaderDataBuffer(std::vector<ShaderSizeData_t> data)
@@ -163,22 +164,48 @@ size_t RenderFramework_OGL3::CreateShaderDataBuffer(std::vector<ShaderSizeData_t
 
 size_t RenderFramework_OGL3::CreateTextureFromData(void* data, uint32_t width, uint32_t height, uint16_t format, uint32_t pitch, uint32_t slicePitch)
 {
-	size_t ret = textures.size();
-	GLuint textureId;
-    glGenTextures(1, &textureId);
-	textures.push_back({ textureId });
-	glBindTexture(GL_TEXTURE_2D, textureId);
-	glCompressedTexImage2D(GL_TEXTURE_2D, 0, s_PakToGlFormat[format], width, height, 0, pitch * height, data);
-	if (format == 57) { // A8_UNORM, swizzle to get alpha in red channel and set other channels to 0
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ZERO);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ZERO);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ZERO);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_RED);
-	}
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    const GLTextureFormat& fmt = s_PakToGLFormat[format];
+    GLuint texture;
+
+    glCreateTextures(GL_TEXTURE_2D, 1, &texture);
+
+    // Immutable storage — equivalent to D3D11_USAGE_IMMUTABLE with 1 mip level
+    glTextureStorage2D(texture, 1, fmt.internalFormat, width, height);
+
+    if (fmt.compressed) {
+        // For BCn/DXT formats — slicePitch is the total compressed data size
+        glCompressedTextureSubImage2D(
+            texture, 0,
+            0, 0, width, height,
+            fmt.internalFormat,
+            static_cast<GLsizei>(slicePitch),
+            data
+        );
+    }
+    else {
+        // GL_UNPACK_ROW_LENGTH is in pixels, not bytes
+        const uint32_t rowLengthPixels = pitch / fmt.blockSize;
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(rowLengthPixels));
+
+        glTextureSubImage2D(
+            texture, 0,
+            0, 0, width, height,
+            fmt.format, fmt.type,
+            data
+        );
+
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // reset to default
+    }
+    auto error = glGetError();
+    if (error != GL_NO_ERROR) {
+        printf("CreateTextureFromData failed (GL error) %d\n", error);
+        glDeleteTextures(1, &texture);
+        return ~0ULL;
+    }
+    glTextureParameteri(texture, GL_TEXTURE_SRGB_DECODE_EXT, GL_DECODE_EXT);
+
+    size_t ret = textures.size();
+    textures.emplace_back(texture);
 	return ret;
 }
 
@@ -188,16 +215,101 @@ size_t RenderFramework_OGL3::LoadTexture(fs::path& path)
 }
 
 void RenderFramework_OGL3::RuiWriteIndexBuffer(std::vector<uint16_t>& data)
-{}
+{
+    //indexBuffer
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+    glBufferSubData(
+        GL_ELEMENT_ARRAY_BUFFER,
+        0,
+        data.size() * sizeof(uint16_t),
+        data.data()
+    );
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
 
 void RenderFramework_OGL3::RuiWriteVertexBuffer(std::vector<Vertex_t>&data)
-{}
+{
+	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferSubData(
+        GL_ARRAY_BUFFER,
+        0,
+        data.size() * sizeof(Vertex_t),
+        data.data()
+	);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
 void RenderFramework_OGL3::RuiWriteStyleBuffer(std::vector<StyleDescriptorShader_t>&data)
-{}
+{
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, styleDescSSBO);
+    glBufferSubData(
+        GL_SHADER_STORAGE_BUFFER,
+        0,
+        data.size() * sizeof(StyleDescriptorShader_t),
+        data.data()
+	);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
 
 void RenderFramework_OGL3::RuiBindPipeline()
-{}
+{
+    // OMSetDepthStencilState (stencil ref = 1)
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_ALWAYS);
+    glEnable(GL_STENCIL_TEST);
+    glStencilMaskSeparate(GL_FRONT_AND_BACK, 0xFF);
+    glStencilFuncSeparate(GL_FRONT, GL_ALWAYS, 1, 0xFF); // ref=1
+    glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_INCR, GL_KEEP);
+    glStencilFuncSeparate(GL_BACK, GL_ALWAYS, 1, 0xFF);  // ref=1
+    glStencilOpSeparate(GL_BACK, GL_KEEP, GL_DECR, GL_KEEP);
+
+    // RSSetState
+    glDisable(GL_CULL_FACE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glDisable(GL_SCISSOR_TEST);
+
+    // RSSetViewports
+    glViewport(
+        (GLint)viewport.x,
+        (GLint)viewport.y,
+        (GLsizei)viewport.width,
+        (GLsizei)viewport.height
+    );
+    glDepthRange(viewport.MinDepth, viewport.MaxDepth);
+
+    // OMSetRenderTargets
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    // OMSetBlendState
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(
+        GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+        GL_SRC_ALPHA, GL_DST_ALPHA
+    );
+    glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    // VSSetConstantBuffers(2) + PSSetConstantBuffers(2)
+    // In GL, UBO bindings are shared across all shader stages
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, commonPerCameraUBO);
+
+    // VSSetConstantBuffers(3) + PSSetConstantBuffers(3)
+    glBindBufferBase(GL_UNIFORM_BUFFER, 3, modelInstanceUBO);
+
+    // IASetInputLayout + IASetVertexBuffers + IASetIndexBuffer
+    // All stored in the VAO from init
+    glBindVertexArray(vao);
+
+    // VSSetShader + PSSetShader
+    glUseProgram(shaderProgram);
+
+    // PSSetSamplers(0)
+    glBindSampler(0, samplerState);
+
+    // IASetPrimitiveTopology -> specified at draw time, not here
+    // Use GL_TRIANGLES in your glDrawElements call
+}
 
 void RenderFramework_OGL3::RuiLoad(int width, int height)
 {
@@ -434,6 +546,12 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = width;
+	viewport.height = height;
+	viewport.MinDepth = 0.0f;
+	viewport.MaxDepth = 1.0f;
     
     glDisable(GL_CULL_FACE);                   
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);  
@@ -443,8 +561,13 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
     glEnable(GL_DEPTH_CLAMP);                   
     glDisable(GL_POLYGON_OFFSET_FILL);
 
-    glViewport(0, 0, width, height);
-    glDepthRange(0.0, 1.0);
+    glViewport(
+        (GLint)viewport.x,
+        (GLint)viewport.y,
+        (GLsizei)viewport.width,
+        (GLsizei)viewport.height
+	);
+	glDepthRange(viewport.MinDepth, viewport.MaxDepth);
 
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
