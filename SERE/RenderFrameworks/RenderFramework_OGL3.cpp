@@ -16,8 +16,9 @@ RenderFramework_OGL3::RenderFramework_OGL3()
         SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
     }
     SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-
-    
+	if(!SDL_GL_LoadLibrary(nullptr)) { // Load the default OpenGL library
+        SDL_Log("Failed to load OpenGL library: %s", SDL_GetError());
+    }
 	const char* glsl_version = "#version 130";
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -72,14 +73,15 @@ bool RenderFramework_OGL3::ShouldMainLoopRun()
 
 bool RenderFramework_OGL3::ImGuiStartFrame()
 {
-	ImGui_ImplOpenGL3_NewFrame();
-	ImGui_ImplSDL3_NewFrame();
 	if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
 	{
 		SDL_Delay(10);
 		return false;
 	}
 
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplSDL3_NewFrame();
+	
 	return true;
 }
 
