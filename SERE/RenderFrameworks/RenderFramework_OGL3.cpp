@@ -150,16 +150,57 @@ void RenderFramework_OGL3::RuiClearFrame()
 
 }
 
+
 void RenderFramework_OGL3::DrawIndexed(uint32_t count, uint32_t start, size_t * resources)
 {
+    GLuint resourceViews[5];
+    memset(resourceViews, 0, sizeof(resourceViews));
+    if (resources[0] != ~0) {
+        resourceViews[0] = textures[resources[0]].id;
+    }
+    if (resources[1] != ~0) {
+        resourceViews[1] = textures[resources[1]].id;
+    }
+    if (resources[2] != ~0) {
+        resourceViews[2] = buffers[resources[2]].id;
+    }
+    if (resources[3] != ~0) {
+        resourceViews[3] = buffers[resources[3]].id;
+    }
+
+	resourceViews[4] = styleDescSSBO; // Style descriptor buffer is always bound to slot 4
+
+	// bind and acivate the textures
+    for (int i = 0; i < 2; i++) {
+        if (resources[i] != ~0) {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, resourceViews[i]);
+        }
+	}
+
+	for (int i = 2; i < 4; i++) {
+        if (resources[i] != ~0) {
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, resourceViews[i]);
+        }
+    }
     
-	glDrawElementsInstanced(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(start * sizeof(uint16_t)), 1);
+    glBindVertexArray(vao);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+	glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_SHORT, (void*)(start * sizeof(uint16_t)));
+    glBindVertexArray(0);
+
 }
 
 size_t RenderFramework_OGL3::CreateShaderDataBuffer(std::vector<ShaderSizeData_t> data)
 {
-	
-	return size_t();
+	GLuint buffer;
+	glGenBuffers(1, &buffer);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, data.size() * sizeof(ShaderSizeData_t), data.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	auto ret = buffers.size();
+	buffers.push_back({ buffer });
+    return ret;
 }
 
 size_t RenderFramework_OGL3::CreateTextureFromData(void* data, uint32_t width, uint32_t height, uint16_t format, uint32_t pitch, uint32_t slicePitch)
@@ -279,7 +320,7 @@ void RenderFramework_OGL3::RuiBindPipeline()
     glDepthRange(viewport.MinDepth, viewport.MaxDepth);
 
     // OMSetRenderTargets
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     // OMSetBlendState
     glEnable(GL_BLEND);
@@ -307,8 +348,6 @@ void RenderFramework_OGL3::RuiBindPipeline()
     // PSSetSamplers(0)
     glBindSampler(0, samplerState);
 
-    // IASetPrimitiveTopology -> specified at draw time, not here
-    // Use GL_TRIANGLES in your glDrawElements call
 }
 
 void RenderFramework_OGL3::RuiLoad(int width, int height)
