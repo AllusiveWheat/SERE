@@ -33,6 +33,7 @@ RenderFramework_Dx11::RenderFramework_Dx11() {
     // Show the window
 	SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 	SDL_ShowWindow(window);
+	SDL_StartTextInput(window);
 	SDL_MaximizeWindow(window);
 	SDL_SetHint(SDL_HINT_WINDOWS_ENABLE_MENU_MNEMONICS, "0"); // Disable ALT key mnemonics to avoid interfering with ImGui input handling
     // Setup Platform/Renderer backends
@@ -57,11 +58,13 @@ bool RenderFramework_Dx11::ShouldMainLoopRun() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
-		if(	event.type == SDL_EVENT_KEY_DOWN)
-		{
-			if (event.key.key == SDLK_LALT || event.key.key == SDLK_RALT)
-				break;
-		}
+		//if(	event.type == SDL_EVENT_KEY_DOWN)
+		//{
+		//	if (event.key.key == SDLK_LALT || event.key.key == SDLK_RALT)
+		//	{
+		//		continue;
+		//	}
+		//}
 		if (event.type == SDL_EVENT_QUIT)
 			return false;
 		if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window))
