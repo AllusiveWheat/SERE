@@ -51,6 +51,29 @@ RenderFramework_OGL3::RenderFramework_OGL3()
     depthStencilTexture = 0;
     colorTexture = 0;
 
+    vertexSource = R"(
+        #version 450 core
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        out vec2 TexCoord;
+        void main()
+        {
+            gl_Position = vec4(aPos, 1.0);
+            TexCoord = aTexCoord;
+        }
+    )";
+
+    fragmentSource = R"(
+        #version 450 core
+        out vec4 FragColor;
+        in vec2 TexCoord;
+        uniform sampler2D ourTexture;
+        void main()
+        {
+            FragColor = texture(ourTexture, TexCoord);
+        }
+    )";
+
 }
 
 RenderFramework_OGL3::~RenderFramework_OGL3()
@@ -75,8 +98,7 @@ bool RenderFramework_OGL3::ShouldMainLoopRun()
 			return false;
 		if (event.type == SDL_EVENT_WINDOW_RESIZED && event.window.windowID == SDL_GetWindowID(window))
 		{
-			// Release all outstanding references to the swap chain's buffers before resizing.
-			WinResizeWidth = (UINT)event.window.data1; // Queue resize
+			WinResizeWidth = (UINT)event.window.data1;
 			WinResizeHeight = (UINT)event.window.data2;
 		}
 		ImGui_ImplSDL3_ProcessEvent(&event);
@@ -142,9 +164,11 @@ size_t RenderFramework_OGL3::CreateShaderDataBuffer(std::vector<ShaderSizeData_t
 size_t RenderFramework_OGL3::CreateTextureFromData(void* data, uint32_t width, uint32_t height, uint16_t format, uint32_t pitch, uint32_t slicePitch)
 {
 	size_t ret = textures.size();
-	glGenTextures(1, &textures.emplace_back().id);
-	glBindTexture(GL_TEXTURE_2D, textures.back().id);
-	//glCompressedTexImage2D(GL_TEXTURE_2D, 0, s_PakToGlFormat[format], width, height, 0, pitch * height, data);
+	GLuint textureId;
+    glGenTextures(1, &textureId);
+	textures.push_back({ textureId });
+	glBindTexture(GL_TEXTURE_2D, textureId);
+	glCompressedTexImage2D(GL_TEXTURE_2D, 0, s_PakToGlFormat[format], width, height, 0, pitch * height, data);
 	if (format == 57) { // A8_UNORM, swizzle to get alpha in red channel and set other channels to 0
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ZERO);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ZERO);
@@ -176,11 +200,188 @@ void RenderFramework_OGL3::RuiBindPipeline()
 {}
 
 void RenderFramework_OGL3::RuiLoad(int width, int height)
-{}
+{
+
+    glGenBuffers(1, &commonPerCameraUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, commonPerCameraUBO);
+    glBufferData(GL_UNIFORM_BUFFER, 576, nullptr, GL_STATIC_DRAW);
+
+    glGenBuffers(1, &modelInstanceUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, modelInstanceUBO);
+    glBufferData(GL_UNIFORM_BUFFER, 208, nullptr, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+   
+
+    CBufCommonPerCamera cam{};
+    cam.c_cameraRelativeToClip.a.x = 2.f;
+    cam.c_cameraRelativeToClip.a.w = -1.0f;
+    cam.c_cameraRelativeToClip.b.y = -2.f;
+    cam.c_cameraRelativeToClip.b.w = 1.0f;
+    cam.c_cameraRelativeToClip.c.z = 1.f;
+    cam.c_cameraRelativeToClip.d.w = 1.0f;
+    cam.c_cameraRelativeToClipPrevFrame.a.x = 1.0f;
+    cam.c_cameraRelativeToClipPrevFrame.b.y = 1.0f;
+    cam.c_cameraRelativeToClipPrevFrame.c.z = 1.0f;
+    cam.c_cameraRelativeToClipPrevFrame.d.w = 1.0f;
+    cam.c_envMapLightScale = 1.0f;
+    cam.c_renderTargetSize.x = width;
+    cam.c_renderTargetSize.y = height;
+    cam.c_rcpRenderTargetSize.x = 0.000520833360f;
+    cam.c_rcpRenderTargetSize.y = 0.000925925910f;
+    cam.c_numCoverageSamples = 1.0f;
+    cam.c_rcpNumCoverageSamples = 1.0f;
+    cam.c_cloudRelConst.x = 0.5f;
+    cam.c_cloudRelConst.y = 0.5f;
+    cam.c_useRealTimeLighting = 1.0f;
+    cam.c_maxLightingValue = 5.0f;
+    cam.c_viewportMaxZ = 1.0f;
+    cam.c_viewportScale.x = 1.0f;
+    cam.c_viewportScale.y = 1.0f;
+    cam.c_rcpViewportScale.x = 1.0f;
+    cam.c_rcpViewportScale.y = 1.0f;
+    cam.c_framebufferViewportScale.x = 1.0f;
+    cam.c_framebufferViewportScale.y = 1.0f;
+    cam.c_rcpFramebufferViewportScale.x = 1.0f;
+    cam.c_rcpFramebufferViewportScale.y = 1.0f;
+
+    glBindBuffer(GL_UNIFORM_BUFFER, commonPerCameraUBO);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(cam), &cam);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, modelInstanceUBO);
+    ModelInstance* inst = (ModelInstance*)glMapBuffer(
+        GL_UNIFORM_BUFFER, GL_WRITE_ONLY
+    );
+    memset(inst, 0, sizeof(ModelInstance));
+    inst->objectToCameraRelative.a.x = 1.0f;
+    inst->objectToCameraRelative.b.y = 1.0f;
+    inst->objectToCameraRelative.c.z = 1.0f;
+    inst->objectToCameraRelativePrevFrame.a.x = 1.0f;
+    inst->objectToCameraRelativePrevFrame.b.y = 1.0f;
+    inst->objectToCameraRelativePrevFrame.c.z = 1.0f;
+    inst->diffuseModulation.x = 0.999999940f;
+    inst->diffuseModulation.y = 0.999999940f;
+    inst->diffuseModulation.z = 0.999999940f;
+    inst->diffuseModulation.w = 1.0f;
+    glUnmapBuffer(GL_UNIFORM_BUFFER);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    
+    glGenBuffers(1, &indexBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+    glBufferData(
+        GL_ELEMENT_ARRAY_BUFFER,
+        sizeof(uint16_t) * 0x6000,
+        nullptr, GL_DYNAMIC_DRAW
+    );
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    glGenBuffers(1, &vertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        sizeof(Vertex_t) * 0x4000,
+        nullptr, GL_DYNAMIC_DRAW
+    );
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+   
+
+    glGenBuffers(1, &styleDescSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, styleDescSSBO);
+    glBufferData(
+        GL_SHADER_STORAGE_BUFFER,
+        sizeof(StyleDescriptorShader_t) * 0x200,
+        nullptr, GL_DYNAMIC_DRAW
+    );
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+ 
+    glGenSamplers(1, &samplerState);
+    glSamplerParameteri(samplerState, GL_TEXTURE_MIN_FILTER,
+        GL_LINEAR_MIPMAP_NEAREST);
+    glSamplerParameteri(samplerState, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glSamplerParameteri(samplerState, GL_TEXTURE_WRAP_S, GL_REPEAT);        // U = WRAP
+    glSamplerParameteri(samplerState, GL_TEXTURE_WRAP_T, GL_REPEAT);        // V = WRAP
+    glSamplerParameteri(samplerState, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE); // W = CLAMP
+    glSamplerParameterf(samplerState, GL_TEXTURE_LOD_BIAS, 0.0f);
+    glSamplerParameterf(samplerState, GL_TEXTURE_MIN_LOD, 0.0f);
+    glSamplerParameterf(samplerState, GL_TEXTURE_MAX_LOD, FLT_MAX);
+
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(
+        GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+        GL_SRC_ALPHA, GL_DST_ALPHA
+    );
+    glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+
+    auto compileShader = [](GLenum type, const char* src) -> GLuint {
+        GLuint shader = glCreateShader(type);
+        glShaderSource(shader, 1, &src, nullptr);
+        glCompileShader(shader);
+        GLint ok;
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+        if (!ok) {
+            char log[512];
+            glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+            printf("Shader compile error: %s\n", log);
+            return 0;
+        }
+        return shader;
+        };
+
+   
+    GLuint vs = compileShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
+
+    shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vs);
+    glAttachShader(shaderProgram, fs);
+    glLinkProgram(shaderProgram);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    GLint linkOk;
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &linkOk);
+    if (!linkOk) {
+        char log[512];
+        glGetProgramInfoLog(shaderProgram, sizeof(log), nullptr, log);
+        printf("Program link error: %s\n", log);
+        return;
+    }
+
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex_t), (void*)0x00);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex_t), (void*)0x18);
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex_t), (void*)0x28);
+
+    glEnableVertexAttribArray(3);
+    glVertexAttribIPointer(3, 4, GL_SHORT,
+        sizeof(Vertex_t), (void*)0x30);
+
+    glBindVertexArray(0);
+
+    RuiReCreatePipeline(width, height);
+}
 
 void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
 {
-    // --- Cleanup ---
     if (fbo) {
         glDeleteFramebuffers(1, &fbo);
         fbo = 0;
@@ -194,9 +395,7 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
         depthStencilTexture = 0;
     }
 
-    // --- Color texture ---
-    // Equivalent to: targetTexture + targetView + targetResourceView
-    // (In GL, the texture itself IS the shader resource - no separate SRV needed)
+   
     glGenTextures(1, &colorTexture);
     glBindTexture(GL_TEXTURE_2D, colorTexture);
     glTexImage2D(
@@ -208,8 +407,7 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // --- Depth-stencil texture ---
-    // Equivalent to: depthTexture + depthStencil (D24_UNORM_S8_UINT)
+    
     glGenTextures(1, &depthStencilTexture);
     glBindTexture(GL_TEXTURE_2D, depthStencilTexture);
     glTexImage2D(
@@ -221,8 +419,7 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // --- Framebuffer Object (FBO) ---
-    // Equivalent to: CreateRenderTargetView + CreateDepthStencilView
+   
     glGenFramebuffers(1, &fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(
@@ -237,34 +434,28 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // --- Rasterizer state ---
-    // Equivalent to: D3D11_RASTERIZER_DESC
-    glDisable(GL_CULL_FACE);                    // CullMode = NONE
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);  // FillMode = SOLID
-    glDisable(GL_SCISSOR_TEST);                 // ScissorEnable = false
-    glDisable(GL_MULTISAMPLE);                  // MultisampleEnable = false
-    glDisable(GL_LINE_SMOOTH);                  // AntialiasedLineEnable = false
-    glEnable(GL_DEPTH_CLAMP);                   // DepthClipEnable = false (GL 3.2+)
-    glDisable(GL_POLYGON_OFFSET_FILL);          // DepthBias/SlopeScaledDepthBias = 0
+    
+    glDisable(GL_CULL_FACE);                   
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);  
+    glDisable(GL_SCISSOR_TEST);                 
+    glDisable(GL_MULTISAMPLE);                  
+    glDisable(GL_LINE_SMOOTH);                  
+    glEnable(GL_DEPTH_CLAMP);                   
+    glDisable(GL_POLYGON_OFFSET_FILL);
 
-    // --- Viewport ---
     glViewport(0, 0, width, height);
-    //glDepthRange(0.0, 1.0);
+    glDepthRange(0.0, 1.0);
 
-    // --- Depth stencil state ---
-    // Equivalent to: D3D11_DEPTH_STENCIL_DESC
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_ALWAYS);
 
     glEnable(GL_STENCIL_TEST);
-    glStencilMaskSeparate(GL_FRONT_AND_BACK, 0xFF); // StencilWriteMask
+    glStencilMaskSeparate(GL_FRONT_AND_BACK, 0xFF); 
 
-    // Front face — StencilFunc: ALWAYS, Fail: KEEP, DepthFail: INCR, Pass: KEEP
     glStencilFuncSeparate(GL_FRONT, GL_ALWAYS, 0, 0xFF);
     glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_INCR, GL_KEEP);
 
-    // Back face — StencilFunc: ALWAYS, Fail: KEEP, DepthFail: DECR, Pass: KEEP
     glStencilFuncSeparate(GL_BACK, GL_ALWAYS, 0, 0xFF);
     glStencilOpSeparate(GL_BACK, GL_KEEP, GL_DECR, GL_KEEP);
 
@@ -272,7 +463,7 @@ void RenderFramework_OGL3::RuiReCreatePipeline(int width, int height)
 
 void* RenderFramework_OGL3::GetTextureView(size_t id)
 {
-	return nullptr;
+	return (void*)textures[id].id;
 }
 
 void* RenderFramework_OGL3::GetRuiView()

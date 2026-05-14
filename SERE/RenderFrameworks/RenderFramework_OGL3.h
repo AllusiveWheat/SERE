@@ -73,52 +73,64 @@ static const GLenum s_PakToGlFormat[] =
 };
 
 class RenderFramework_OGL3 : public RenderFramework {
-	struct Buffer {
-		uint32_t id;
-	};
-	struct Texture {
-		uint32_t id;
-	};
+    struct Buffer {
+        GLuint id;
+    };
+    struct Texture {
+        GLuint id;
+    };
 
 public:
-	RenderFramework_OGL3();
-	~RenderFramework_OGL3();
+    RenderFramework_OGL3();
+    ~RenderFramework_OGL3();
 
-	bool ShouldMainLoopRun();
+    bool ShouldMainLoopRun();
 
-	bool ImGuiStartFrame();
-	void ImGuiEndFrame();
+    bool ImGuiStartFrame();
+    void ImGuiEndFrame();
 
-	void ImGuiDeInit();
+    void ImGuiDeInit();
 
-	void RuiClearFrame();
+    void RuiClearFrame();
 
-	void DrawIndexed(uint32_t count, uint32_t start, size_t* resources);
-	size_t CreateShaderDataBuffer(std::vector<ShaderSizeData_t> data);
-	size_t CreateTextureFromData(void* data, uint32_t width, uint32_t height, uint16_t format, uint32_t pitch, uint32_t slicePitch);
-	size_t LoadTexture(fs::path& path);
+    void DrawIndexed(uint32_t count, uint32_t start, size_t* resources);
+    size_t CreateShaderDataBuffer(std::vector<ShaderSizeData_t> data);
+    size_t CreateTextureFromData(void* data, uint32_t width, uint32_t height, uint16_t format, uint32_t pitch, uint32_t slicePitch);
+    size_t LoadTexture(fs::path& path);
 
-	void RuiWriteIndexBuffer(std::vector<uint16_t>& data);
-	void RuiWriteVertexBuffer(std::vector<Vertex_t>& data);
-	void RuiWriteStyleBuffer(std::vector<StyleDescriptorShader_t>& data);
+    void RuiWriteIndexBuffer(std::vector<uint16_t>& data);
+    void RuiWriteVertexBuffer(std::vector<Vertex_t>& data);
+    void RuiWriteStyleBuffer(std::vector<StyleDescriptorShader_t>& data);
 
 
-	void RuiBindPipeline();
-	void RuiLoad(int width, int height);
-	void RuiReCreatePipeline(int width, int height);
+    void RuiBindPipeline();
+    void RuiLoad(int width, int height);
+    void RuiReCreatePipeline(int width, int height);
 
-	void* GetTextureView(size_t id);
-	void* GetRuiView();
+    void* GetTextureView(size_t id);
+    void* GetRuiView();
 private:
-	std::vector<Buffer> buffers;
-	std::vector<Texture> textures;
-	uint32_t ruiFBO;
-	uint32_t ruiTexture;
-	uint32_t ruiDepthStencil;
-	SDL_Window* window;
-	SDL_GLContext glContext;
+    std::vector<Buffer> buffers;
+    std::vector<Texture> textures;
+    const char* vertexSource;
+	const char* fragmentSource;
+    uint32_t ruiFBO;
+    uint32_t ruiTexture;
+    uint32_t ruiDepthStencil;
+    SDL_Window* window;
+    SDL_GLContext glContext;
     GLuint* ruiImageView;
-	GLuint fbo;
-	GLuint colorTexture;
-	GLuint depthStencilTexture;
+    GLuint fbo;
+    GLuint colorTexture;
+    GLuint depthStencilTexture;
+    GLuint vao;
+    GLuint shaderProgram;
+    GLuint vertexBuffer;
+    GLuint indexBuffer;
+    GLuint styleDescBuffer;
+    GLuint samplerState;
+    GLuint styleDescSSBO;
+	GLuint modelInstanceUBO;
+	GLuint commonPerCameraUBO;
+
 };
