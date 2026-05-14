@@ -15,17 +15,15 @@ UINT g_WinResizeWidth = 0, g_WinResizeHeight = 0;
 
 RenderFramework_Dx11::RenderFramework_Dx11() {
     // Create application window
-    //ImGui_ImplWin32_EnableDpiAwareness();
-    //wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr),::LoadIcon(nullptr,MAKEINTRESOURCE(1)) , nullptr, nullptr, nullptr, L"SERE", ::LoadIcon(nullptr,MAKEINTRESOURCE(1))};
-    //::RegisterClassExW(&wc);
+	if (!SDL_Init(SDL_INIT_VIDEO)) {
+		SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
+	}
 	SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
 	window = SDL_CreateWindow("SERE", 1280, 800, window_flags);
 	SDL_PropertiesID props = SDL_GetWindowProperties(window);
 	hwnd = (HWND)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
-	if (!SDL_Init(SDL_INIT_VIDEO)) {
-		SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
-	}
+	
     // Initialize Direct3D
     if (!CreateDeviceD3D())
     {
