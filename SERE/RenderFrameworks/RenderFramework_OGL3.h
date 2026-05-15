@@ -144,7 +144,7 @@ private:
     std::vector<Buffer> buffers;
     std::vector<Texture> textures;
     const char* vertexSource;
-	const char* fragmentSource;
+    const char* fragmentSource;
     uint32_t ruiFBO;
     uint32_t ruiTexture;
     uint32_t ruiDepthStencil;

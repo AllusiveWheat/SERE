@@ -3,6 +3,8 @@
 #include <Imgui/imgui_impl_sdl3.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
+#include <filesystem>
+#include <fstream>
 
 UINT WinResizeWidth = 0, WinResizeHeight = 0;
 
@@ -51,29 +53,7 @@ RenderFramework_OGL3::RenderFramework_OGL3()
     depthStencilTexture = 0;
     colorTexture = 0;
 
-    vertexSource = R"(
-        #version 450 core
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec2 aTexCoord;
-        out vec2 TexCoord;
-        void main()
-        {
-            gl_Position = vec4(aPos, 1.0);
-            TexCoord = aTexCoord;
-        }
-    )";
-
-    fragmentSource = R"(
-        #version 450 core
-        out vec4 FragColor;
-        in vec2 TexCoord;
-        uniform sampler2D ourTexture;
-        void main()
-        {
-            FragColor = texture(ourTexture, TexCoord);
-        }
-    )";
-
+	
 }
 
 RenderFramework_OGL3::~RenderFramework_OGL3()
@@ -183,12 +163,20 @@ void RenderFramework_OGL3::DrawIndexed(uint32_t count, uint32_t start, size_t * 
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, resourceViews[i]);
         }
     }
-    
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D, colorTexture, 0
+    );
+    if(glGetError() != GL_NO_ERROR)
+        printf("OpenGL error occurred\n");
     glBindVertexArray(vao);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
 	glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_SHORT, (void*)(start * sizeof(uint16_t)));
     glBindVertexArray(0);
-
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, colorTexture);
+    
 }
 
 size_t RenderFramework_OGL3::CreateShaderDataBuffer(std::vector<ShaderSizeData_t> data)
@@ -348,6 +336,7 @@ void RenderFramework_OGL3::RuiBindPipeline()
     // PSSetSamplers(0)
     glBindSampler(0, samplerState);
 
+    
 }
 
 void RenderFramework_OGL3::RuiLoad(int width, int height)
@@ -472,7 +461,8 @@ void RenderFramework_OGL3::RuiLoad(int width, int height)
 
     auto compileShader = [](GLenum type, const char* src) -> GLuint {
         GLuint shader = glCreateShader(type);
-        glShaderSource(shader, 1, &src, nullptr);
+        glShaderSource(shader, 1,(const GLchar**)&src, nullptr);
+
         glCompileShader(shader);
         GLint ok;
         glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
@@ -482,14 +472,40 @@ void RenderFramework_OGL3::RuiLoad(int width, int height)
             printf("Shader compile error: %s\n", log);
             return 0;
         }
+        char log[512];
+        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+        printf("Shader compiled %s\n", log);
         return shader;
         };
 
-   
+    std::ifstream vertexFile{ "./Assets/Shader/ui.vs" };
+    std::vector<char> vertexBufferData;
+    vertexFile.seekg(0, std::ios::end);
+    vertexBufferData.resize(vertexFile.tellg());
+    vertexFile.seekg(0);
+    vertexFile.read(vertexBufferData.data(), vertexBufferData.size());
+    vertexFile.close();
+
+    vertexBufferData.push_back('\0'); // Null-terminate the shader source
+
+    vertexSource = vertexBufferData.data();
+
+    std::ifstream fragFile{ "./Assets/Shader/ui.ps" };
+    std::vector<char> fragBufferData;
+    fragFile.seekg(0, std::ios::end);
+    fragBufferData.resize(fragFile.tellg());
+    fragFile.seekg(0);
+    fragFile.read(fragBufferData.data(), fragBufferData.size());
+    fragFile.close();
+
+    fragBufferData.push_back('\0'); // Null-terminate the shader source
+
+    fragmentSource = fragBufferData.data(); 
+
     GLuint vs = compileShader(GL_VERTEX_SHADER, vertexSource);
     GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
 
-    shaderProgram = glCreateProgram();
+    shaderProgram = glCreateProgram();  
     glAttachShader(shaderProgram, vs);
     glAttachShader(shaderProgram, fs);
     glLinkProgram(shaderProgram);
