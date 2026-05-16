@@ -153,7 +153,7 @@ void RenderFramework_OGL3::DrawIndexed(uint32_t count, uint32_t start, size_t * 
 	// bind and acivate the textures
     for (int i = 0; i < 2; i++) {
         if (resources[i] != ~0) {
-            glActiveTexture(GL_TEXTURE0 + i);
+            //glActiveTexture(GL_TEXTURE0 + i);
             glBindTexture(GL_TEXTURE_2D, resourceViews[i]);
         }
 	}
@@ -163,19 +163,38 @@ void RenderFramework_OGL3::DrawIndexed(uint32_t count, uint32_t start, size_t * 
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, resourceViews[i]);
         }
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo); 
     glFramebufferTexture2D(
         GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
         GL_TEXTURE_2D, colorTexture, 0
     );
     if(glGetError() != GL_NO_ERROR)
         printf("OpenGL error occurred\n");
+
     glBindVertexArray(vao);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex_t), (void*)0x00);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex_t), (void*)0x18);
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex_t), (void*)0x28);
+     
+    glEnableVertexAttribArray(3);
+    glVertexAttribIPointer(3, 4, GL_INT,
+        sizeof(Vertex_t), (void*)0x30);
+    glUseProgram(shaderProgram);
 	glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_SHORT, (void*)(start * sizeof(uint16_t)));
     glBindVertexArray(0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, colorTexture);
+    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     
 }
 
@@ -210,20 +229,19 @@ size_t RenderFramework_OGL3::CreateTextureFromData(void* data, uint32_t width, u
             static_cast<GLsizei>(slicePitch),
             data
         );
+  
     }
     else {
         // GL_UNPACK_ROW_LENGTH is in pixels, not bytes
         const uint32_t rowLengthPixels = pitch / fmt.blockSize;
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(rowLengthPixels));
 
-        glTextureSubImage2D(
-            texture, 0,
-            0, 0, width, height,
-            fmt.format, fmt.type,
-            data
-        );
+        //glTextureSubImage2D(
+        //    texture, 0,
+        //    0, 0, width, height,
+        //    fmt.format, fmt.type,
+        //    data
+        //);
 
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // reset to default
     }
     auto error = glGetError();
     if (error != GL_NO_ERROR) {
@@ -231,7 +249,7 @@ size_t RenderFramework_OGL3::CreateTextureFromData(void* data, uint32_t width, u
         glDeleteTextures(1, &texture);
         return ~0ULL;
     }
-    glTextureParameteri(texture, GL_TEXTURE_SRGB_DECODE_EXT, GL_DECODE_EXT);
+    //glTextureParameteri(texture, GL_TEXTURE_SRGB_DECODE_EXT, GL_DECODE_EXT);
 
     size_t ret = textures.size();
     textures.emplace_back(texture);
@@ -247,25 +265,31 @@ void RenderFramework_OGL3::RuiWriteIndexBuffer(std::vector<uint16_t>& data)
 {
     //indexBuffer
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-    glBufferSubData(
-        GL_ELEMENT_ARRAY_BUFFER,
-        0,
-        data.size() * sizeof(uint16_t),
-        data.data()
-    );
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, data.size() * sizeof(uint16_t), data.data(), GL_STATIC_DRAW);
+    //glBufferSubData(
+    //    GL_ELEMENT_ARRAY_BUFFER,
+    //    0,
+    //    data.size() * sizeof(uint16_t),
+    //    data.data()
+    //);
 }
 
 void RenderFramework_OGL3::RuiWriteVertexBuffer(std::vector<Vertex_t>&data)
 {
+    glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-    glBufferSubData(
-        GL_ARRAY_BUFFER,
-        0,
-        data.size() * sizeof(Vertex_t),
-        data.data()
-	);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+ //   glBufferSubData(
+ //       GL_ARRAY_BUFFER,
+ //       0,
+ //       data.size() * sizeof(Vertex_t),
+ //       data.data()
+	//);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(Vertex_t), data.data(), GL_STATIC_DRAW);
+    auto err = glGetError();
+    if (err != 0) {
+		printf("Error updating vertex buffer: %d\n", err);
+    }
+
 }
 
 void RenderFramework_OGL3::RuiWriteStyleBuffer(std::vector<StyleDescriptorShader_t>&data)
@@ -277,7 +301,6 @@ void RenderFramework_OGL3::RuiWriteStyleBuffer(std::vector<StyleDescriptorShader
         data.size() * sizeof(StyleDescriptorShader_t),
         data.data()
 	);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
 void RenderFramework_OGL3::RuiBindPipeline()
@@ -306,9 +329,6 @@ void RenderFramework_OGL3::RuiBindPipeline()
         (GLsizei)viewport.height
     );
     glDepthRange(viewport.MinDepth, viewport.MaxDepth);
-
-    // OMSetRenderTargets
-    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     // OMSetBlendState
     glEnable(GL_BLEND);
@@ -479,7 +499,7 @@ void RenderFramework_OGL3::RuiLoad(int width, int height)
         };
 
     std::ifstream vertexFile{ "./Assets/Shader/ui.vs" };
-    std::vector<char> vertexBufferData;
+    std::vector<char> vertexBufferData; 
     vertexFile.seekg(0, std::ios::end);
     vertexBufferData.resize(vertexFile.tellg());
     vertexFile.seekg(0);
