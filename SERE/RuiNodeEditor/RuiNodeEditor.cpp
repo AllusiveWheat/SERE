@@ -7,6 +7,7 @@
 
 #include "Nodes/ArgumentNodes.h"
 #include "Nodes/TransformNodes.h"
+#include "Nodes/TransformGroupNode.h"
 #include "Nodes/RenderJobNodes.h"
 #include "Nodes/ConstantVarNodes.h"
 #include "Nodes/SplitMergeNodes.h"
@@ -71,8 +72,16 @@ static const SDL_DialogFileFilter filters[] = {
 
 void NodeEditor::Draw() {
 	ImGui::Begin("Node Editor");
+	if (!exportError.empty()) ImGui::TextWrapped("Export failed: %s", exportError.c_str());
+	mINF.get_recursion_blacklist().clear();
+	ValidateTransformGroups(mINF);
 	
 	mINF.update();
+	ValidateTransformGroups(mINF);
+	for (auto& [id, node] : mINF.getNodes())
+		if (auto group = dynamic_cast<TransformGroupNode*>(node.get())) {
+			try { group->ApplyPreview(); } catch (const std::exception& ex) { group->error = ex.what(); }
+		}
 
 	ImGui::End();
 }
@@ -207,6 +216,8 @@ void NodeEditor::PasteNodes() {
 		node["PosY"].SetFloat(pos.y);
 	}
 
+	for (auto id : newNodeIds)
+		if (auto group = dynamic_cast<TransformGroupNode*>(mINF.getNodes().at(id).get())) group->RemapMembers(remappedNodeIds);
 	for (auto itr = m_clipboard["Links"].Begin(); itr != m_clipboard["Links"].End(); itr++) {
 		if (!itr->IsObject()) {
 			continue;
@@ -471,16 +482,49 @@ void NodeEditor::Export() {
 	
 }
 
-void NodeEditor::ExportToPath(const fs::path& path)
+bool NodeEditor::ExportToPath(const fs::path& path)
 {
+	try {
+	exportError.clear();
+	ValidateTransformGroups(mINF);
 	std::string name = path.filename().replace_extension("").string();
 	RuiExportPrototype proto(render, name);
 	proto.Generate(mINF.getNodes(), render);
 	proto.WriteToFile(path);
+	return true;
+	} catch (const std::exception& ex) {
+		exportError = ex.what();
+		SDL_Log("Export failed: %s", ex.what());
+		return false;
+	}
 }
 
 void NodeEditor::RightClickPopup(ImFlow::BaseNode* node) {
+	if (ImGui::MenuItem("Create transform group from selection")) {
+		auto group = mINF.placeNode<TransformGroupNode>(render, mINF.getStyleManager());
+		group->AddSelected();
+	}
 	if (node) {
+		if (ImGui::BeginMenu("Add to transform group")) {
+			bool available = false;
+			std::map<ImFlow::NodeUID, std::shared_ptr<ImFlow::BaseNode>> ordered(mINF.getNodes().begin(), mINF.getNodes().end());
+			for (const auto& [id, candidate] : ordered) {
+				auto group = dynamic_cast<TransformGroupNode*>(candidate.get());
+				if (!group) continue;
+				bool canAdd = group->CanAddNode(*node);
+				if (node->isSelected())
+					for (const auto& [selectedId, selected] : ordered)
+						if (selected->isSelected() && group->CanAddNode(*selected)) canAdd = true;
+				if (!canAdd) continue;
+				available = true;
+				if (ImGui::MenuItem(std::format("{}##{}", group->label, id).c_str())) {
+					if (node->isSelected()) group->AddSelected();
+					else group->AddNode(*node);
+				}
+			}
+			if (!available) ImGui::TextUnformatted("No available group for these transforms.");
+			ImGui::EndMenu();
+		}
 
 		if (ImGui::MenuItem("Delete")) {
 			node->destroy();

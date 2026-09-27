@@ -146,6 +146,7 @@ public:
 	static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
 private:
 	uint32_t hash;
+	std::string assetName;
 	bool showSelectionUi;
 };
 

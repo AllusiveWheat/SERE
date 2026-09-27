@@ -1,8 +1,34 @@
 #include "TransformNodes.h"
+#include "TransformGroupNode.h"
 #include "Imgui/imgui_stdlib.h"
 #include "Util.h"
 
 __m128 xmmword_12A146C0 = _mm_castsi128_ps(_mm_set_epi32(0xFFFFFFFF,0,0,0xFFFFFFFF));
+
+BuiltinTransformNode::BuiltinTransformNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style)
+    : RuiBaseNode(name, category, GetPinInfo(), rend, style) {
+    for (int i = 0; i < 3; ++i)
+        getOut<TransformResult>(std::to_string(i).c_str())->behaviour([this, i] {
+            return render->transformResults[i];
+        });
+}
+
+BuiltinTransformNode::BuiltinTransformNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+    rapidjson::GenericObject<false, rapidjson::Value>) : BuiltinTransformNode(rend, style) {}
+
+void BuiltinTransformNode::Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) {
+    obj.AddMember("Name", name, allocator);
+    obj.AddMember("Category", category, allocator);
+    RuiBaseNode::Serialize(obj, allocator);
+}
+
+std::vector<std::shared_ptr<ImFlow::PinProto>> BuiltinTransformNode::GetPinInfo() {
+    return {
+        std::make_shared<ImFlow::OutPinProto<TransformResult>>("0"),
+        std::make_shared<ImFlow::OutPinProto<TransformResult>>("1"),
+        std::make_shared<ImFlow::OutPinProto<TransformResult>>("2")
+    };
+}
 
 Transform0Node::Transform0Node(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& style):RuiBaseNode(name,category,GetPinInfo(),rend,style) {
 	uint64_t outHash = randomInt64();
@@ -44,8 +70,10 @@ std::vector<std::shared_ptr<ImFlow::PinProto>> Transform0Node::GetPinInfo() {
 Transform1Node::Transform1Node(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& style):RuiBaseNode(name,category,GetPinInfo(),rend,style) {
 
 	getIn<TransformResult>("Source")->setEmptyVal(render->transformResults[2]);
-	getOut<TransformResult>("Out")->behaviour([this]() {
+	const uint64_t outHash = randomInt64();
+	getOut<TransformResult>("Out")->behaviour([this, outHash]() {
 		TransformResult res;
+		res.hash = outHash;
 		const TransformResult& parent = getInVal<TransformResult>("Source");
 		const TransformSize& size = getInVal<TransformSize>("Size");
 
@@ -72,7 +100,26 @@ void Transform1Node::Serialize(rapidjson::GenericValue<rapidjson::UTF8<>>& obj, 
 }
 
 void Transform1Node::Export(RuiExportPrototype& proto) {
-
+	const auto source = getInVal<TransformResult>("Source");
+	const auto out = getOut<TransformResult>("Out")->val();
+	const auto size = getInVal<TransformSize>("Size");
+	ExportElement<uint64_t> element;
+	element.identifier = out.hash;
+	element.dependencys = {source.hash};
+	element.callback = [source, out, size](RuiExportPrototype& proto) {
+		const uint16_t index = static_cast<uint16_t>(proto.transformIndices.size());
+		proto.transformIndices.emplace(out.hash, index);
+		struct Copy { uint8_t type = 1, count = 1; uint16_t source; } command;
+		command.source = proto.transformIndices.at(source.hash);
+		proto.AddTransformData(reinterpret_cast<uint8_t*>(&command), sizeof(command));
+		ExportElement<std::string> code;
+		code.identifier = Variable::UniqueName(); code.dependencys = {size.name};
+		code.callback = [index, size](RuiExportPrototype& proto) {
+			proto.codeLines.push_back(std::format("transformSize[{}] = {};", index, size.GetFormattedName(proto)));
+		};
+		proto.codeElements.push_back(code);
+	};
+	proto.transformCallbacks.push_back(element);
 }
 
 std::vector<std::shared_ptr<ImFlow::PinProto>> Transform1Node::GetPinInfo() {
@@ -166,6 +213,7 @@ void Transform2Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets val0;
 			Float2Offsets val3;
 		};
+		static_assert(sizeof(Transform2FileStruct) == 12);
 		Transform2FileStruct trans{};
 		trans.parent = proto.transformIndices[parent.hash];
 		trans.val0 = proto.GetFloat2DataVariableOffset(v0);
@@ -273,6 +321,7 @@ void Transform3Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets val0;
 			Float2Offsets val3;
 		};
+		static_assert(sizeof(Transform3FileStruct) == 12);
 		Transform3FileStruct trans{};
 		trans.parent = proto.transformIndices[parent.hash];
 		trans.val0 = proto.GetFloat2DataVariableOffset(v0);
@@ -383,6 +432,7 @@ void Transform4Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets val0;
 			Float2Offsets val3;
 		};
+		static_assert(sizeof(Transform4FileStruct) == 12);
 		Transform4FileStruct trans{};
 		trans.parent = proto.transformIndices[parent.hash];
 		trans.val0 = proto.GetFloat2DataVariableOffset(v0);
@@ -522,6 +572,7 @@ void Transform5Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets val0;
 			Float2Offsets val3;
 		};
+		static_assert(sizeof(Transform5FileStruct) == 12);
 		Transform5FileStruct trans{};
 		trans.parent = proto.transformIndices[parent.hash];
 		trans.val0 = proto.GetFloat2DataVariableOffset(v0);
@@ -632,6 +683,7 @@ void Transform6Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets val0;
 			Float2Offsets val3;
 		};
+		static_assert(sizeof(Transform6FileStruct) == 12);
 		uint16_t transId = (uint16_t)proto.transformIndices.size();
 		proto.transformIndices.emplace(out.hash,transId);
 		ExportElement<std::string> ele;
@@ -772,6 +824,7 @@ void Transform7Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets translate;
 			Float2Offsets point;
 		};
+		static_assert(sizeof(Transform7FileStruct) == 22);
 		uint16_t transId = (uint16_t)proto.transformIndices.size();
 		proto.transformIndices.emplace(out.hash,transId);
 		ExportElement<std::string> ele;
@@ -940,6 +993,7 @@ void Transform8Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets translate;
 			Float2Offsets point;
 		};
+		static_assert(sizeof(Transform8FileStruct) == 22);
 		uint16_t transId = (uint16_t)proto.transformIndices.size();
 		proto.transformIndices.emplace(out.hash,transId);
 		ExportElement<std::string> ele;
@@ -1108,7 +1162,7 @@ void Transform9Node::Export(RuiExportPrototype& proto) {
 	ele.dependencys = {p1parent.hash,p2parent.hash};
 	ele.callback = [p1parent,p1Pos,p2parent,p2Pos,translate,point,out,size](RuiExportPrototype& proto) {
 		struct Transform9FileStruct {
-			uint8_t type = 7;
+			uint8_t type = 9;
 			uint8_t count = 1;
 			uint16_t p1parent;
 			Float2Offsets p1pos;
@@ -1117,6 +1171,7 @@ void Transform9Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets translate;
 			Float2Offsets point;
 		};
+		static_assert(sizeof(Transform9FileStruct) == 22);
 		uint16_t transId = (uint16_t)proto.transformIndices.size();
 		proto.transformIndices.emplace(out.hash,transId);
 		ExportElement<std::string> ele;
@@ -1284,7 +1339,7 @@ void Transform10Node::Export(RuiExportPrototype& proto) {
 	ele.dependencys = {p1parent.hash,p2parent.hash,p3parent.hash};
 	ele.callback = [p1parent,p1Pos,p2parent,p2Pos,p3parent,p3Pos,translate,point1,point2,out,size](RuiExportPrototype& proto) {
 		struct Transform10FileStruct {
-			uint8_t type = 7;
+			uint8_t type = 10;
 			uint8_t count = 1;
 			uint16_t p1parent;
 			Float2Offsets p1pos;
@@ -1296,6 +1351,7 @@ void Transform10Node::Export(RuiExportPrototype& proto) {
 			Float2Offsets point1;
 			Float2Offsets point2;
 		};
+		static_assert(sizeof(Transform10FileStruct) == 32);
 		uint16_t transId = (uint16_t)proto.transformIndices.size();
 		proto.transformIndices.emplace(out.hash,transId);
 		ExportElement<std::string> ele;
@@ -1485,6 +1541,7 @@ void Transform11Node::Export(RuiExportPrototype& proto) {
 			uint16_t rotation;
 			Float2Offsets center;
 		};
+		static_assert(sizeof(Transform11FileStruct) == 14);
 		uint16_t transId = (uint16_t)proto.transformIndices.size();
 		proto.transformIndices.emplace(out.hash,transId);
 		ExportElement<std::string> ele;
@@ -1523,6 +1580,8 @@ std::vector<std::shared_ptr<ImFlow::PinProto>> Transform11Node::GetPinInfo(){
 }
 
 void AddTransformNodes(const std::unique_ptr<NodeEditor>& editor) {
+    editor->AddNodeType<BuiltinTransformNode>();
+	editor->AddNodeType<TransformGroupNode>();
 	//editor->AddNodeType<Transform0Node>();
 	editor->AddNodeType<Transform1Node>();
 	editor->AddNodeType<Transform2Node>();
@@ -1535,6 +1594,4 @@ void AddTransformNodes(const std::unique_ptr<NodeEditor>& editor) {
 	editor->AddNodeType<Transform9Node>();
 	editor->AddNodeType<Transform10Node>();
 	editor->AddNodeType<Transform11Node>();
-	//editor->AddNodeType<Transform12Node>();
-	//editor->AddNodeType<Transform13Node>();
 }

@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include <any>
+#include <functional>
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "Imgui/imgui.h"
 #include "FontAtlas.h"
@@ -142,6 +143,11 @@ public:
 
     std::vector<__m128> transformSizes;
     std::vector<TransformResult> transformResults;
+    std::map<uint64_t, TransformResult> finalizedTransforms;
+    TransformResult ResolveTransform(const TransformResult& value) const {
+        auto found = finalizedTransforms.find(value.hash);
+        return found == finalizedTransforms.end() ? value : found->second;
+    }
     DrawInfo drawInfo;
     Globals globals;
     
@@ -255,7 +261,6 @@ public:
 
     void DrawImage() {
         ImGui::Begin("Render Image");
-
         constexpr float minZoom = 1.0f;
         constexpr float maxZoom = 16.0f;
 

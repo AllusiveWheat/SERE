@@ -1,4 +1,7 @@
 #include "RuiNodeEditor/RuiExportPrototype.h"
+#include <stdexcept>
+#include "TransformBytecode.h"
+#include "Nodes/TransformGroupNode.h"
 
 
 RuiExportPrototype::RuiExportPrototype(const std::shared_ptr<RenderInstance>& inst,const std::string& name):size(inst->elementWidth,inst->elementHeight),name(name) {
@@ -192,34 +195,62 @@ void RuiExportPrototype::GenerateCode() {
 				printf("\n");
 			}
 		}
-		printf("Error done");
+		throw std::runtime_error("Cannot generate code: unresolved variable or transform-size dependency.");
 	}
 		
 
-	codeLines.push_back(std::format("funcs->executeTransform(inst,{});",transformData.size()));
+	EmitTransformExecution(transformData.size());
 	codeLines.push_back("}");
 	
 
 }
 
 void RuiExportPrototype::GenerateTransformData() {
-	bool addedVar = true;
-	while (addedVar) {
-		addedVar = false;
-		for (auto& ele : transformCallbacks) {
-			if (transformIndices.contains(ele.identifier))continue;
-			bool dependencyMissing = false;
-			for (auto& dep : ele.dependencys) {
-				if (!transformIndices.contains(dep)) {
-					dependencyMissing = true;
-					break;
-				}
-			}
-			if (dependencyMissing)continue;
-			ele.callback(*this);
-			addedVar = true;
-		}
-	}
+    PrepareTransformGroupExport(*this);
+    std::set<uint64_t> completed;
+    bool addedVar = true;
+    while (addedVar) {
+        addedVar = false;
+        for (auto& ele : transformCallbacks) {
+            if (completed.contains(ele.identifier)) continue;
+            bool dependencyMissing = false;
+            for (auto dep : ele.dependencys) {
+                const auto producer = transformProducers.find(dep);
+                if (producer != transformProducers.end()
+                    ? !completed.contains(producer->second)
+                    : !transformIndices.contains(dep)) {
+                    dependencyMissing = true;
+                    break;
+                }
+            }
+            if (dependencyMissing) continue;
+            const auto firstCode = codeElements.size();
+            ele.callback(*this);
+            completed.insert(ele.identifier);
+            transformCodeDependencies.insert(ele.codeDependencies.begin(), ele.codeDependencies.end());
+            for (size_t i = firstCode; i < codeElements.size(); ++i)
+                transformCodeDependencies.insert(codeElements[i].identifier);
+            addedVar = true;
+        }
+    }
+    if (completed.size() != transformCallbacks.size())
+        throw std::runtime_error("Cannot export transforms: unresolved or cyclic dependencies.");
+    for (const auto& [frame, begin, end] : pendingTransform12) {
+        struct Apply { uint8_t type = 12, count = 1; uint16_t frame, begin, end; } command{};
+        static_assert(sizeof(Apply) == 8);
+        command.frame = frame;
+        command.begin = begin;
+        command.end = end;
+        AddTransformData(reinterpret_cast<uint8_t*>(&command), sizeof(command));
+    }
+}
+
+void RuiExportPrototype::EmitTransformExecution(size_t endOffset) {
+    if (endOffset == 0 && transformData.empty()) return;
+    if (endOffset <= lastExecutedTransformOffset || !transformCommandEnds.contains(endOffset))
+        throw std::runtime_error("Transform execution barrier does not end at a new command boundary.");
+    codeLines.push_back(std::format("funcs->executeTransform(inst,{});", endOffset));
+    lastExecutedTransformOffset = endOffset;
 }
 
 void RuiExportPrototype::GenerateRenderJobData() {
@@ -294,44 +325,61 @@ uint32_t calculateShortHash(const char* name, uint32_t mul, uint32_t add) {
 
 void RuiExportPrototype::GenerateArguments() {
 
-	cluster.argCount = 1;
 	cluster.argIndex = 0;
 	cluster.short_6 = 0;
 	cluster.dataStructSize = currentDataStructSize;
 	cluster.short_C = 1;
 	cluster.short_E = 0;
 	cluster.renderJobCount = renderJobCount;
-	while (cluster.argCount < arguments.size())cluster.argCount *= 2;
 
-	for (int add = 0; add < 256; add++) {
-		bool success = true;
-		for (int mul = 1; mul < 256; mul++) {
-			success = true;
-			std::vector<bool> argSlots(cluster.argCount, false);
-			for (auto& [name,type] : arguments) {
-				uint32_t argIndex = calculateShortHash(name.c_str(), mul, add) & (cluster.argCount - 1);
-				if (argSlots[argIndex]) {
-					success = false;
+	// The engine finds an argument by masking the short hash with argCount-1, so every name needs its
+	// own slot. A single table size cannot always host a collision free multiplier/addend pair, and
+	// falling back to mul=0 collapses names into each other, so widen the table until one exists.
+	bool found = false;
+	for (uint32_t argCount = 1; argCount <= 4096 && !found; argCount *= 2) {
+		if (argCount < arguments.size())
+			continue;
+		std::vector<bool> argSlots(argCount, false);
+		for (uint32_t add = 0; add < 256 && !found; add++) {
+			for (uint32_t mul = 1; mul < 256; mul++) {
+				std::fill(argSlots.begin(),argSlots.end(),false);
+				bool success = true;
+				for (auto& [name,type] : arguments) {
+					uint32_t argIndex = calculateShortHash(name.c_str(), mul, add) & (argCount - 1);
+					if (argSlots[argIndex]) {
+						success = false;
+						break;
+					}
+					argSlots[argIndex] = true;
+				}
+				if (success) {
+					cluster.argCount = (uint16_t)argCount;
+					cluster.byte_4 = (uint8_t)mul;
+					cluster.byte_5 = (uint8_t)add;
+					found = true;
 					break;
 				}
-				argSlots[argIndex] = true;
-			}
-			if (success) {
-				cluster.byte_4 = mul;
-				cluster.byte_5 = add;
-				break;
 			}
 		}
-		if(success)break;
 	}
-	exportArgs.resize(cluster.argCount);
+	if (!found)
+		throw std::runtime_error("No collision free argument hash exists for this argument set.");
+
+	exportArgs.assign(cluster.argCount,Argument_t{});
+	argNamesData.clear();
 	for (auto& [name, type] : arguments) {
 		uint32_t hash = calculateShortHash(name.c_str(),cluster.byte_4,cluster.byte_5);
 		uint32_t index = hash & (cluster.argCount -1);
+		// Names are debug only; the engine looks arguments up by shortHash. nameOffset is a
+		// 16 bit offset into the concatenated name blob, so names stay packed together.
+		if (argNamesData.size() > UINT16_MAX)
+			throw std::runtime_error("Argument names do not fit 16 bit offsets.");
 		exportArgs[index].type = type;
 		exportArgs[index].dataOffset = varOffsets[name];
-		exportArgs[index].nameOffset = 0;
+		exportArgs[index].nameOffset = (uint16_t)argNamesData.size();
 		exportArgs[index].shortHash = hash >> 4;
+		argNamesData.append(name);
+		argNamesData.push_back('\0');
 		
 	}
 }
@@ -520,11 +568,37 @@ bool RuiExportPrototype::GenerateCodeStruct() {
 void RuiExportPrototype::Generate(std::unordered_map<ImFlow::NodeUID, std::shared_ptr<ImFlow::BaseNode>>& nodes, const std::shared_ptr<RenderInstance>& render) {
 	for (int i = 0; i < 3; i++)
 		transformIndices.emplace(render->transformResults[i].hash, i);
-	for (auto& [uid, node] : nodes) {
+	const bool hasGroups = std::any_of(nodes.begin(), nodes.end(), [](const auto& entry) {
+		return dynamic_cast<TransformGroupNode*>(entry.second.get()) != nullptr;
+	});
+	auto exportNode = [&](const std::shared_ptr<ImFlow::BaseNode>& node) {
+		const auto first = transformCallbacks.size();
 		std::dynamic_pointer_cast<RuiBaseNode>(node)->Export(*this);
+		// Ordinary graphs retain their original traversal and lazy evaluation.
+		// Only group scheduling needs the additional value-dependency walk.
+		if (!hasGroups || first == transformCallbacks.size()) return;
+		std::set<std::string> dependencies;
+		for (const auto& pin : node->getIns()) if (pin->isConnected()) {
+			const auto value = pin->getLink().lock()->left()->valueAny();
+			auto add = [&]<typename T>() { if (value.type() == typeid(T)) dependencies.insert(std::any_cast<T>(value).name); };
+			add.operator()<FloatVariable>(); add.operator()<Float2Variable>(); add.operator()<Float3Variable>();
+			add.operator()<IntVariable>(); add.operator()<TransformSize>(); add.operator()<BoolVariable>();
+			if (value.type() == typeid(MathVariable)) std::visit([&](const auto& v) { dependencies.insert(v.name); }, std::any_cast<MathVariable>(value).value);
+		}
+		for (size_t i = first; i < transformCallbacks.size(); ++i) transformCallbacks[i].codeDependencies = dependencies;
+	};
+	if (hasGroups) {
+		std::map<ImFlow::NodeUID, std::shared_ptr<ImFlow::BaseNode>> ordered(nodes.begin(), nodes.end());
+		for (auto& [uid, node] : ordered) exportNode(node);
+	} else {
+		for (auto& [uid, node] : nodes) exportNode(node);
 	}
 	GenerateVariables(render->arguments);
 	GenerateTransformData();
+	const auto bytecode = ValidateTransformBytecode(transformData, currentDataStructSize);
+	if (bytecode.recordCount != transformIndices.size())
+		throw std::runtime_error("Transform bytecode allocation count differs from the exported transform table.");
+	transformCommandEnds = bytecode.commandEnds;
 	GenerateRenderJobData();
 	GenerateMappingData();
 	GenerateArguments();
@@ -537,7 +611,7 @@ void RuiExportPrototype::WriteToFile(fs::path path) {
 	std::ofstream file(path,std::ios::binary);
 	if(!file.good())return;
 
-	RuiPackageHeader_v1_t pkgHdr;
+	RuiPackageHeader_v1_t pkgHdr{};
 	pkgHdr.magic = 'R' | 'U' << 8 | 'I' << 16 | 'P' << 24;
 	pkgHdr.packageVersion = 1;
 	pkgHdr.ruiVersion = 30;
@@ -560,7 +634,10 @@ void RuiExportPrototype::WriteToFile(fs::path path) {
 	pkgHdr.argClusterCount = 1;
 	pkgHdr.argCount = cluster.argCount;
 	pkgHdr.unk_A4 = 0;
-	pkgHdr.argNamesSize = 0;
+	// Names are debug only and must keep 2 byte alignment like every other section.
+	while (argNamesData.size() % 2)
+		argNamesData.push_back('\0');
+	pkgHdr.argNamesSize = (uint32_t)argNamesData.size();
 
 	//pkgHdr.defaultValuesOffset = pkgHdr.nameOffset + pkgHdr.nameSize;
 	//pkgHdr.defaultStringDataOffset = pkgHdr.defaultValuesOffset + pkgHdr.defaultValuesSize;
@@ -602,6 +679,13 @@ void RuiExportPrototype::WriteToFile(fs::path path) {
 
 	pkgHdr.argClusterOffset = file.tellp();
 	file.write((char*)&cluster,sizeof(cluster));
+
+	if (argNamesData.empty()) {
+		pkgHdr.argNamesOffset = 0;
+	} else {
+		pkgHdr.argNamesOffset = file.tellp();
+		file.write(argNamesData.data(),argNamesData.size());
+	}
 
 	pkgHdr.mappingOffset = file.tellp();
 	file.write((char*)mappingData.data(),mappingData.size());

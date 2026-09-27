@@ -1,6 +1,7 @@
 #pragma once
 #include <map>
 #include <vector>
+#include <array>
 #include <set>
 #include <any>
 #include <memory>
@@ -22,6 +23,7 @@ struct ExportElement {
 #endif
 	T identifier;
 	std::set<T> dependencys;
+	std::set<std::string> codeDependencies;
 	std::function<void(RuiExportPrototype&)> callback;
 };
 
@@ -151,6 +153,19 @@ struct ExportRenderJob {
 };
 
 struct RuiExportPrototype {
+    struct TransformGroupExport {
+        std::string label, sizeName;
+        uint64_t frameHash, parentHash, rootHash;
+        std::set<uint64_t> members;
+        TransformSize rootSize;
+        Float2Variable position, pivot;
+        uint16_t begin = 0, end = 0;
+    };
+    std::vector<TransformGroupExport> transformGroups;
+    std::map<uint64_t, uint64_t> transformProducers;
+    // Type 12 mutates existing records; serialize these after all allocating commands.
+    std::vector<std::array<uint16_t, 3>> pendingTransform12;
+    std::set<std::string> transformCodeDependencies;
 
 
 
@@ -175,11 +190,15 @@ struct RuiExportPrototype {
 	std::map<uint64_t, uint16_t> transformIndices;
 	std::vector<StyleDescriptorOffsets> styleDescriptor;
 	std::vector<uint8_t> transformData;
+	std::set<size_t> transformCommandEnds;
+	size_t lastExecutedTransformOffset = 0;
+	void EmitTransformExecution(size_t endOffset);
 	std::vector<uint8_t> renderJobData;
 	std::vector<uint8_t> defaultValues;
 	std::vector<uint8_t> mappingData;
 	std::vector<uint16_t> rpakPointersInDefaultValues;
 	std::stringstream defaultStrings;
+	std::string argNamesData;
 	uint16_t renderJobCount;
 	ArgCluster_t cluster{};
 	std::vector<Argument_t> exportArgs;

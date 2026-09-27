@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "RuiNodeEditor/RuiNodeEditor.h"
 #include "RuiRendering/RenderFunctions.h"
 
@@ -55,6 +57,7 @@ public:
 private:
 
 	Font_t* currentFont;
+	std::optional<uint16_t> fontIndexOverride;
 };
 
 class TextSizeNode : public RuiBaseNode {

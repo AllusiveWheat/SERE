@@ -184,4 +184,18 @@ public:
 	static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
 };
 
+class ConditionalAssetNode : public RuiBaseNode
+{
+public:
+	static inline std::string name = "Conditional (Asset)";
+	static inline std::string category = "Conditionals";
+	explicit ConditionalAssetNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style);
+	explicit ConditionalAssetNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+		rapidjson::GenericObject<false, rapidjson::Value> obj);
+	void draw() override;
+	void Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) override;
+	void Export(RuiExportPrototype& proto) override;
+	static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
+};
+
 void AddConditionalNodes(const std::unique_ptr<NodeEditor>& editor);

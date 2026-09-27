@@ -14,6 +14,7 @@
 #define TAU 6.2831855f
 
 bool Render_Asset(const std::shared_ptr<RenderInstance>& proto, AssetInputData input) {
+	input.transform = proto->ResolveTransform(input.transform);
 
 	__m128 v9; // xmm2
 	__m128 v10; // xmm6
@@ -487,6 +488,7 @@ const char* sub_F98F0(const char** a3, int64_t a4, const char* a5)
 }
 
 bool Render_AssetSmall(const std::shared_ptr<RenderInstance>& proto, AssetCircleInputData data) {
+	data.transform = proto->ResolveTransform(data.transform);
 	int16_t uint8_18; // r9
 
 	int64_t result; // rax
@@ -676,6 +678,7 @@ bool Render_AssetSmall(const std::shared_ptr<RenderInstance>& proto, AssetCircle
 
 
 bool Text_Render(const std::shared_ptr<RenderInstance>& proto, TextInputData data, TransformResult transform) {
+	transform = proto->ResolveTransform(transform);
 
 	__m128 v11; // xmm2
 	__m128 v13; // xmm0

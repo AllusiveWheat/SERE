@@ -311,7 +311,7 @@ static int RunGraphExportCommand(const CommandLineOptions& options)
         std::cerr << "Could not deserialize graph input: " << options.graphInputPath.string() << "\n";
         return 1;
     }
-    nodeEdit->ExportToPath(outputPath);
+    if (!nodeEdit->ExportToPath(outputPath)) return 1;
 
     if (!fs::exists(outputPath, error)) {
         std::cerr << "Export failed: " << outputPath.string() << " was not written.\n";

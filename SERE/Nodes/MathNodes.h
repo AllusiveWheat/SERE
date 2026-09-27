@@ -83,6 +83,32 @@ public:
 };
 
 
+class IntToFloatNode : public RuiBaseNode {
+public:
+	static inline std::string name = "Integer To Float";
+	static inline std::string category = "Math";
+	explicit IntToFloatNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style);
+	explicit IntToFloatNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+		rapidjson::GenericObject<false, rapidjson::Value> obj);
+	void draw() override;
+	void Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) override;
+	void Export(RuiExportPrototype& proto) override;
+	static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
+};
+
+class FloatToSizeNode : public RuiBaseNode {
+public:
+	static inline std::string name = "Float To Size";
+	static inline std::string category = "Math";
+	explicit FloatToSizeNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style);
+	explicit FloatToSizeNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+		rapidjson::GenericObject<false, rapidjson::Value> obj);
+	void draw() override;
+	void Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) override;
+	void Export(RuiExportPrototype& proto) override;
+	static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
+};
+
 void AddMathNodes(const std::unique_ptr<NodeEditor>& editor);
 
 class MultiplyNode : public BinaryMathNode

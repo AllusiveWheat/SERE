@@ -1108,6 +1108,53 @@ std::vector<std::shared_ptr<ImFlow::PinProto>> ConditionalStringNode::GetPinInfo
 	return info;
 }
 
+ConditionalAssetNode::ConditionalAssetNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style)
+	: RuiBaseNode(name, category, GetPinInfo(), rend, style) {
+	const auto outName = Variable::UniqueName();
+	getOut<AssetVariable>("Res")->behaviour([this, outName] {
+		const auto& selected = getInVal<BoolVariable>("A").value
+			? getInVal<AssetVariable>("B") : getInVal<AssetVariable>("C");
+		return AssetVariable(selected.hash, outName);
+	});
+}
+
+ConditionalAssetNode::ConditionalAssetNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+	rapidjson::GenericObject<false, rapidjson::Value>) : ConditionalAssetNode(rend, style) {}
+
+void ConditionalAssetNode::draw() {}
+
+void ConditionalAssetNode::Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) {
+	obj.AddMember("Name", name, allocator);
+	obj.AddMember("Category", category, allocator);
+	RuiBaseNode::Serialize(obj, allocator);
+}
+
+void ConditionalAssetNode::Export(RuiExportPrototype& proto) {
+	const auto out = getOut<AssetVariable>("Res")->val();
+	const auto condition = getInVal<BoolVariable>("A");
+	const auto yes = getInVal<AssetVariable>("B");
+	const auto no = getInVal<AssetVariable>("C");
+	ExportElement<std::string> code;
+	code.identifier = out.name;
+	code.dependencys = {condition.name, yes.name, no.name};
+	code.callback = [out, condition, yes, no](RuiExportPrototype& p) {
+		const auto declaration = p.varsInDataStruct.contains(out.name) ? "" : "uint32_t ";
+		p.codeLines.push_back(std::format("{}{} = {} ? {} : {};",
+			declaration, out.GetFormattedName(p), condition.GetFormattedName(p),
+			yes.GetFormattedName(p), no.GetFormattedName(p)));
+	};
+	proto.codeElements.push_back(std::move(code));
+}
+
+std::vector<std::shared_ptr<ImFlow::PinProto>> ConditionalAssetNode::GetPinInfo() {
+	return {
+		std::make_shared<ImFlow::InPinProto<BoolVariable>>("A", ImFlow::ConnectionFilter::SameType(), BoolVariable(false)),
+		std::make_shared<ImFlow::InPinProto<AssetVariable>>("B", ImFlow::ConnectionFilter::SameType(), AssetVariable()),
+		std::make_shared<ImFlow::InPinProto<AssetVariable>>("C", ImFlow::ConnectionFilter::SameType(), AssetVariable()),
+		std::make_shared<ImFlow::OutPinProto<AssetVariable>>("Res")
+	};
+}
+
 void AddConditionalNodes(const std::unique_ptr<NodeEditor>& editor) {
 
 	editor->AddNodeType<GreaterNode>();
@@ -1120,5 +1167,6 @@ void AddConditionalNodes(const std::unique_ptr<NodeEditor>& editor) {
 	editor->AddNodeType<OrGateNode>();
 	editor->AddNodeType<EqualStringNode>();
 	editor->AddNodeType<ConditionalStringNode>();
+	editor->AddNodeType<ConditionalAssetNode>();
 
 }

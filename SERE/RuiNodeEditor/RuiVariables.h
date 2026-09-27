@@ -40,7 +40,7 @@ struct ColorVariable;
 struct StringVariable;
 struct AssetVariable;
 
-#include "RuiNodeEditor/RuiExportPrototype.h"
+struct RuiExportPrototype;
 
 struct Variable {
 	bool IsConstant() const {

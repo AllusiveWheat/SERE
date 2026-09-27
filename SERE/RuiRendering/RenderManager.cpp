@@ -763,6 +763,7 @@ void RenderInstance::StartFrame(float time) {
 	verts.clear();
 	indices.clear();
 	transformResults.clear();
+	finalizedTransforms.clear();
 	static uint64_t transformHashes[3] = { randomInt64(),randomInt64(),randomInt64() };
 	transformResults.push_back(TransformResult(_mm_set_ps(1, 0, 0, 1), _mm_setzero_ps(), _mm_set_ps(elementHeight, elementHeight, elementWidth, elementWidth), transformHashes[0]));
 	transformResults.push_back(TransformResult(_mm_set_ps(1, 0, 0, 1), _mm_setzero_ps(), _mm_set_ps(elementHeight, elementHeight, elementWidth, elementWidth), transformHashes[1]));

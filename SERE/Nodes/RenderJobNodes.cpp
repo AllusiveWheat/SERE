@@ -363,7 +363,7 @@ std::vector<std::shared_ptr<ImFlow::PinProto>> AssetCircleRenderNode::GetPinInfo
 
 TextStyleNode::TextStyleNode(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& style):RuiBaseNode(name,category,GetPinInfo(),rend,style) {
 
-	currentFont = &fonts[0].fonts.begin()->second;
+	currentFont = fonts.empty() || fonts[0].fonts.empty() ? nullptr : &fonts[0].fonts.begin()->second;
 
 	getOut<TextStyleData>("Style")->behaviour([this]() {
 		TextStyleData res;
@@ -375,7 +375,7 @@ TextStyleNode::TextStyleNode(const std::shared_ptr<RenderInstance>& rend,ImFlow:
 		res.dropShadowHardness = getInVal<FloatVariable>("Dropshadow Hardness");
 		res.dropShadowOffset = getInVal<Float2Variable>("Dropshadow Offset");
 		res.dropShadowBlur = getInVal<FloatVariable>("Dropshadow Blur");
-		res.fontIndex = currentFont->fontIndex;
+		res.fontIndex = fontIndexOverride.value_or(currentFont ? currentFont->fontIndex : 0);
 		res.size = getInVal<FloatVariable>("Size");
 		res.stretchX = getInVal<FloatVariable>("stretchX");
 		res.backgroundSize = getInVal<FloatVariable>("backgroundSize");
@@ -387,11 +387,18 @@ TextStyleNode::TextStyleNode(const std::shared_ptr<RenderInstance>& rend,ImFlow:
 }
 
 TextStyleNode::TextStyleNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style, rapidjson::GenericObject<false, rapidjson::Value> obj) :TextStyleNode(rend, style) {
+	if (obj.HasMember("FontIndex") && obj["FontIndex"].IsUint() && obj["FontIndex"].GetUint() <= UINT16_MAX) {
+		fontIndexOverride = static_cast<uint16_t>(obj["FontIndex"].GetUint());
+		currentFont = nullptr;
+		for (auto& atlas : fonts)
+			if (auto found = atlas.fonts.find(*fontIndexOverride); found != atlas.fonts.end())
+				currentFont = &found->second;
+	}
 	if (obj.HasMember("FontName") && obj["FontName"].IsString()) {
 		std::string fontName = obj["FontName"].GetString();
 		for (auto& fontAtlas : fonts) {
 			for (auto& [index, font] : fontAtlas.fonts) {
-				if (font.name == fontName) {
+				if (!fontIndexOverride && font.name == fontName) {
 					currentFont = &font;
 				}
 			}
@@ -401,28 +408,31 @@ TextStyleNode::TextStyleNode(const std::shared_ptr<RenderInstance>& rend, ImFlow
 }
 
 void TextStyleNode::draw() {
-	ImGui::PushItemWidth(130.f);
-	if(ImGui::BeginCombo("Font", currentFont->name.c_str())) {
+	const auto label = currentFont ? currentFont->name : std::format("Font {}", fontIndexOverride.value_or(0));
+	ImGui::SetNextItemWidth(180.0f);
+	const bool open = ImGui::BeginCombo("Font", label.c_str());
+	const bool comboHovered = ImGui::IsItemHovered();
+	if (open) {
 		for (auto& atlas : fonts) {
-			for (auto& [index,font] : atlas.fonts) {
-				bool isSelected = index == currentFont->fontIndex;
+			for (auto& [index, font] : atlas.fonts) {
+				const bool isSelected = currentFont == &font;
 				if (ImGui::Selectable(font.name.c_str(), isSelected)) {
 					currentFont = &font;
+					fontIndexOverride.reset();
 				}
-				if (isSelected) {
-					ImGui::SetItemDefaultFocus();
-				}
+				if (isSelected) ImGui::SetItemDefaultFocus();
 			}
 		}
 		ImGui::EndCombo();
 	}
-	ImGui::PopItemWidth();
+	if (comboHovered) ImGui::SetTooltip("%s", label.c_str());
 }
 
 void TextStyleNode::Serialize(rapidjson::GenericValue<rapidjson::UTF8<>>& obj, rapidjson::Document::AllocatorType& allocator) {
 	obj.AddMember("Name",name,allocator);
 	obj.AddMember("Category",category,allocator);
-	obj.AddMember("FontName",currentFont->name, allocator);
+	if (currentFont) obj.AddMember("FontName", currentFont->name, allocator);
+	if (fontIndexOverride) obj.AddMember("FontIndex", *fontIndexOverride, allocator);
 	RuiBaseNode::Serialize(obj,allocator);
 }
 
@@ -462,7 +472,7 @@ TextSizeNode::TextSizeNode(const std::shared_ptr<RenderInstance>& rend,ImFlow::S
 		data.styles[2] = getInVal<TextStyleData>("Style_2");
 		data.styles[3] = getInVal<TextStyleData>("Style_3");
 		data.sizeName = sizeName;
-		GetTextSize(data);
+		if (!fonts.empty()) GetTextSize(data);
 		return data;
 	});
 	getOut<TransformSize>("Size")->behaviour([this,sizeName]() {
@@ -477,7 +487,7 @@ TextSizeNode::TextSizeNode(const std::shared_ptr<RenderInstance>& rend,ImFlow::S
 		data.styles[2] = getInVal<TextStyleData>("Style_2");
 		data.styles[3] = getInVal<TextStyleData>("Style_3");
 		
-		TransformSize size{ GetTextSize(data),sizeName };
+		TransformSize size{fonts.empty() ? _mm_setzero_ps() : GetTextSize(data),sizeName};
 		return size;
 	});
 

@@ -1,0 +1,112 @@
+{
+  "Nodes": [
+    {
+      "Id": 1,
+      "Name": "Transform 4",
+      "Category": "Transform",
+      "PosX": 50.0,
+      "PosY": 50.0,
+      "InputPins": {
+        "Val_0": {
+          "X": 0.0,
+          "Y": 0.0
+        },
+        "Val_3": {
+          "X": 0.0,
+          "Y": 0.0
+        }
+      }
+    },
+    {
+      "Id": 2,
+      "Name": "Transform 4",
+      "Category": "Transform",
+      "PosX": 50.0,
+      "PosY": 400.0,
+      "InputPins": {
+        "Val_0": {
+          "X": 0.05,
+          "Y": 0.0
+        },
+        "Val_3": {
+          "X": 0.0,
+          "Y": 0.0
+        }
+      }
+    },
+    {
+      "Id": 3,
+      "Name": "Render Image Image Mask",
+      "Category": "Image Render",
+      "PosX": 800.0,
+      "PosY": 50.0,
+      "InputPins": {
+        "Main Color": {
+          "Red": 0.1,
+          "Green": 0.6,
+          "Blue": 1.0,
+          "Alpha": 1.0
+        }
+      }
+    },
+    {
+      "Id": 4,
+      "Name": "Render Image Image Mask",
+      "Category": "Image Render",
+      "PosX": 800.0,
+      "PosY": 600.0,
+      "InputPins": {
+        "Main Color": {
+          "Red": 1.0,
+          "Green": 0.5,
+          "Blue": 0.1,
+          "Alpha": 1.0
+        }
+      }
+    },
+    {
+      "Id": 10,
+      "Name": "Transform Group",
+      "Category": "Transform",
+      "Label": "Two squares",
+      "PosX": 400.0,
+      "PosY": 50.0,
+      "Members": [
+        {
+          "Node": 1,
+          "Pin": "Out"
+        },
+        {
+          "Node": 2,
+          "Pin": "Out"
+        }
+      ]
+    }
+  ],
+  "Links": [
+    {
+      "LeftNode": 1,
+      "LeftPin": "Out",
+      "RightNode": 3,
+      "RightPin": "Transform"
+    },
+    {
+      "LeftNode": 2,
+      "LeftPin": "Out",
+      "RightNode": 4,
+      "RightPin": "Transform"
+    },
+    {
+      "LeftNode": 10,
+      "LeftPin": "Content Root",
+      "RightNode": 1,
+      "RightPin": "Parent"
+    },
+    {
+      "LeftNode": 10,
+      "LeftPin": "Content Root",
+      "RightNode": 2,
+      "RightPin": "Parent"
+    }
+  ]
+}

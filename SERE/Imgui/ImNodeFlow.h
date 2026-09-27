@@ -930,6 +930,7 @@ namespace ImFlow
          * @param name New title
          */
         BaseNode* setTitle(const std::string& title) { m_title = title; return this; }
+        const std::string& getTitle() const { return m_title; }
 
         /**
          * @brief <BR>Set node's position

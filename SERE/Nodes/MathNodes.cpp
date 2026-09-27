@@ -245,28 +245,30 @@ MathNodeConnectionType UnaryMathNode::GetConnectionRestrictions()
 
 bool UnaryMathNode::CanCreateLink(ImFlow::Pin* own, ImFlow::Pin* other)
 {
+	const auto& connectedType = own->getType() == ImFlow::PinType_Output
+		? own->getDataType() : other->getDataType();
 	switch (GetConnectionRestrictions())
 	{
 	case MathNodeConnectionType::None:
 		return true;
 	case MathNodeConnectionType::Float:
-		if (other->getDataType() == typeid(FloatVariable))
+		if (connectedType == typeid(FloatVariable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Float2:
-		if (other->getDataType() == typeid(Float2Variable))
+		if (connectedType == typeid(Float2Variable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Float3:
-		if (other->getDataType() == typeid(Float3Variable))
+		if (connectedType == typeid(Float3Variable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Color:
-		if (other->getDataType() == typeid(ColorVariable))
+		if (connectedType == typeid(ColorVariable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Size:
-		if (other->getDataType() == typeid(TransformSize))
+		if (connectedType == typeid(TransformSize))
 			return true;
 		return false;
 	case MathNodeConnectionType::Invalid:
@@ -549,6 +551,8 @@ MathNodeConnectionType BinaryMathNode::GetConnectionRestrictions()
 
 bool BinaryMathNode::CanCreateLink(ImFlow::Pin* own, ImFlow::Pin* other)
 {
+	const auto& connectedType = own->getType() == ImFlow::PinType_Output
+		? own->getDataType() : other->getDataType();
 	if (own->getName() == "B"&&other->getDataType() == typeid(FloatVariable))
 		return true;
 
@@ -557,23 +561,23 @@ bool BinaryMathNode::CanCreateLink(ImFlow::Pin* own, ImFlow::Pin* other)
 	case MathNodeConnectionType::None:
 		return true;
 	case MathNodeConnectionType::Float:
-		if (other->getDataType() == typeid(FloatVariable))
+		if (connectedType == typeid(FloatVariable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Float2:
-		if (other->getDataType() == typeid(Float2Variable))
+		if (connectedType == typeid(Float2Variable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Float3:
-		if (other->getDataType() == typeid(Float3Variable))
+		if (connectedType == typeid(Float3Variable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Color:
-		if (other->getDataType() == typeid(ColorVariable))
+		if (connectedType == typeid(ColorVariable))
 			return true;
 		return false;
 	case MathNodeConnectionType::Size:
-		if (other->getDataType() == typeid(TransformSize))
+		if (connectedType == typeid(TransformSize))
 			return true;
 		return false;
 	case MathNodeConnectionType::Invalid:
@@ -1306,9 +1310,17 @@ float MinNode::Operation(float a, float b)
 	return std::min(a, b);
 }
 
+// std::min/std::max deduce one type from both arguments, so a bare float literal (a double)
+// would make the call ambiguous against a float operand. Only these two need the suffix.
+static std::string FloatTypedOperand(const std::string& operand) {
+	if (operand.empty() || operand.find_first_not_of("0123456789.+-eE") != std::string::npos)
+		return operand;
+	return operand + "f";
+}
+
 std::string MinNode::OperationString(std::string a, std::string b)
 {
-	return std::format("std::min({}, {})",a,b);
+	return std::format("std::min({}, {})",FloatTypedOperand(a),FloatTypedOperand(b));
 }
 
 std::string MinNode::OperationStringM128(std::string a, std::string b)
@@ -1335,12 +1347,92 @@ float MaxNode::Operation(float a, float b)
 
 std::string MaxNode::OperationString(std::string a, std::string b)
 {
-	return std::format("std::max({}, {})",a,b);
+	return std::format("std::max({}, {})",FloatTypedOperand(a),FloatTypedOperand(b));
 }
 
 std::string MaxNode::OperationStringM128(std::string a, std::string b)
 {
 	return std::format("_mm_max_ps({}, {})",a,b);
+}
+
+IntToFloatNode::IntToFloatNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style)
+	: RuiBaseNode(name, category, GetPinInfo(), rend, style) {
+	const auto outName = Variable::UniqueName();
+	getOut<FloatVariable>("Value")->behaviour([this, outName] {
+		return FloatVariable(static_cast<float>(getInVal<IntVariable>("Value").value), outName);
+	});
+}
+
+IntToFloatNode::IntToFloatNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+	rapidjson::GenericObject<false, rapidjson::Value>) : IntToFloatNode(rend, style) {}
+
+void IntToFloatNode::draw() {}
+
+void IntToFloatNode::Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) {
+	obj.AddMember("Name", name, allocator);
+	obj.AddMember("Category", category, allocator);
+	RuiBaseNode::Serialize(obj, allocator);
+}
+
+void IntToFloatNode::Export(RuiExportPrototype& proto) {
+	const auto input = getInVal<IntVariable>("Value");
+	const auto out = getOut<FloatVariable>("Value")->val();
+	ExportElement<std::string> code;
+	code.identifier = out.name;
+	code.dependencys = {input.name};
+	code.callback = [input, out](RuiExportPrototype& p) {
+		const auto declaration = p.varsInDataStruct.contains(out.name) ? "" : "float ";
+		p.codeLines.push_back(std::format("{}{} = static_cast<float>({});",
+			declaration, out.GetFormattedName(p), input.GetFormattedName(p)));
+	};
+	proto.codeElements.push_back(std::move(code));
+}
+
+std::vector<std::shared_ptr<ImFlow::PinProto>> IntToFloatNode::GetPinInfo() {
+	return {
+		std::make_shared<ImFlow::InPinProto<IntVariable>>("Value", ImFlow::ConnectionFilter::SameType(), IntVariable(0)),
+		std::make_shared<ImFlow::OutPinProto<FloatVariable>>("Value")
+	};
+}
+
+FloatToSizeNode::FloatToSizeNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style)
+	: RuiBaseNode(name, category, GetPinInfo(), rend, style) {
+	const auto outName = Variable::UniqueName();
+	getOut<TransformSize>("Size")->behaviour([this, outName] {
+		return TransformSize(_mm_set1_ps(getInVal<FloatVariable>("Value").value), outName);
+	});
+}
+
+FloatToSizeNode::FloatToSizeNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& style,
+	rapidjson::GenericObject<false, rapidjson::Value>) : FloatToSizeNode(rend, style) {}
+
+void FloatToSizeNode::draw() {}
+
+void FloatToSizeNode::Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) {
+	obj.AddMember("Name", name, allocator);
+	obj.AddMember("Category", category, allocator);
+	RuiBaseNode::Serialize(obj, allocator);
+}
+
+void FloatToSizeNode::Export(RuiExportPrototype& proto) {
+	const auto input = getInVal<FloatVariable>("Value");
+	const auto out = getOut<TransformSize>("Size")->val();
+	ExportElement<std::string> code;
+	code.identifier = out.name;
+	code.dependencys = {input.name};
+	code.callback = [input, out](RuiExportPrototype& p) {
+		const auto declaration = p.varsInDataStruct.contains(out.name) ? "" : "__m128 ";
+		p.codeLines.push_back(std::format("{}{} = _mm_set1_ps({});",
+			declaration, out.GetFormattedName(p), input.GetFormattedName(p)));
+	};
+	proto.codeElements.push_back(std::move(code));
+}
+
+std::vector<std::shared_ptr<ImFlow::PinProto>> FloatToSizeNode::GetPinInfo() {
+	return {
+		std::make_shared<ImFlow::InPinProto<FloatVariable>>("Value", ImFlow::ConnectionFilter::SameType(), FloatVariable(0)),
+		std::make_shared<ImFlow::OutPinProto<TransformSize>>("Size")
+	};
 }
 
 void AddMathNodes(const std::unique_ptr<NodeEditor>& editor) {
@@ -1363,5 +1455,7 @@ void AddMathNodes(const std::unique_ptr<NodeEditor>& editor) {
 	editor->AddNodeType<ClampNode>();
 	editor->AddNodeType<MinNode>();
 	editor->AddNodeType<MaxNode>();
+	editor->AddNodeType<IntToFloatNode>();
+	editor->AddNodeType<FloatToSizeNode>();
 }
 

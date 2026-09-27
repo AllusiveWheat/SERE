@@ -55,6 +55,7 @@ add_executable (SERE
 
 	"Nodes/ArgumentNodes.cpp"
 	"Nodes/TransformNodes.cpp"
+	"Nodes/TransformGroupNode.cpp"
 	"Nodes/RenderJobNodes.cpp"
 	"Nodes/ConstantVarNodes.cpp"
 	"Nodes/SplitMergeNodes.cpp"

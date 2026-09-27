@@ -355,8 +355,8 @@ std::vector<std::shared_ptr<ImFlow::PinProto>> StringVarNode::GetPinInfo() {
 
 AssetVarNode::AssetVarNode(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& style):RuiBaseNode(name,category,GetPinInfo(),rend,style) {
 
-	hash = loadAsset("white");
-	showSelectionUi = false;
+	assetName = "white";
+	hash = loadAsset(assetName.c_str());
 	std::string outName = Variable::UniqueName();
 	getOut<AssetVariable>("Value")->behaviour([this,outName]() {
 		return AssetVariable(hash,outName);
@@ -364,12 +364,10 @@ AssetVarNode::AssetVarNode(const std::shared_ptr<RenderInstance>& rend,ImFlow::S
 }
 
 AssetVarNode::AssetVarNode(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& style, rapidjson::GenericObject<false,rapidjson::Value> obj):AssetVarNode(rend,style) {
-
-	hash = loadAsset("white");
 	if (obj.HasMember("AssetName") && obj["AssetName"].IsString()) {
-		hash = loadAsset(obj["AssetName"].GetString());
+		assetName = obj["AssetName"].GetString();
+		hash = loadAsset(assetName.c_str());
 	}
-	
 }
 
 void AssetVarNode::draw() {
@@ -377,13 +375,14 @@ void AssetVarNode::draw() {
 		ImGui::OpenPopup("Asset Selection");
 	}
 	AssetSelectionPopup("Asset Selection",&hash);
-
+	if (auto found = imageAssetMap.find(hash); found != imageAssetMap.end() && !found->second.name.empty())
+		assetName = found->second.name;
 }
 
 void AssetVarNode::Serialize(rapidjson::GenericValue<rapidjson::UTF8<>>& obj, rapidjson::Document::AllocatorType& allocator) {
 	obj.AddMember("Name",name,allocator);
 	obj.AddMember("Category",category,allocator);
-	obj.AddMember("AssetName",imageAssetMap[hash].name, allocator);
+	obj.AddMember("AssetName",assetName, allocator);
 	RuiBaseNode::Serialize(obj,allocator);
 }
 
@@ -395,9 +394,9 @@ void AssetVarNode::Export(RuiExportPrototype& proto) {
 	ele.sourceNodeName = typeid(*this).name();
 #endif
 	ele.identifier = out.name;
-	std::string assetName = imageAssetMap[hash].name;
-	ele.callback = [out,assetName](RuiExportPrototype& proto) {
-		proto.codeLines.push_back(std::format("{} = funcs->LoadAsset(inst,\"{}\");",out.GetFormattedName(proto),assetName));
+	const std::string path = assetName;
+	ele.callback = [out,path](RuiExportPrototype& proto) {
+		proto.codeLines.push_back(std::format("{} = funcs->LoadAsset(inst,\"{}\");",out.GetFormattedName(proto),path));
 	};
 	proto.codeElements.push_back(ele);
 }

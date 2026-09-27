@@ -36,7 +36,8 @@ public:
 	void Deserialize();
 	bool DeserializeFromPath(const fs::path& path);
 	void Export();
-	void ExportToPath(const fs::path& path);
+	bool ExportToPath(const fs::path& path);
+	std::string exportError;
 	void Clear();
 	void CopyNodes();
 	void PasteNodes();

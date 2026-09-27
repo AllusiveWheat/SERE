@@ -54,7 +54,7 @@ void ImFlow::InPin<FloatVariable>::drawNodeContent()
 template <>
 void ImFlow::InPin<FloatVariable>::LoadEmptyValue(rapidjson::Value& value)
 {
-    if (!value.IsFloat())
+    if (!value.IsNumber())
         return;
     m_emptyVal.value = value.GetFloat();
 }
@@ -95,9 +95,9 @@ void ImFlow::InPin<Float2Variable>::LoadEmptyValue(rapidjson::Value& value)
 {
     if (!value.IsObject())
         return;
-    if (value.HasMember("X")&&value["X"].IsFloat())
+    if (value.HasMember("X")&&value["X"].IsNumber())
         m_emptyVal.value.x = value["X"].GetFloat();
-    if (value.HasMember("Y")&&value["Y"].IsFloat())
+    if (value.HasMember("Y")&&value["Y"].IsNumber())
         m_emptyVal.value.y = value["Y"].GetFloat();
 }
 
@@ -142,11 +142,11 @@ void ImFlow::InPin<Float3Variable>::LoadEmptyValue(rapidjson::Value& value)
 {
     if (!value.IsObject())
         return;
-    if (value.HasMember("X")&&value["X"].IsFloat())
+    if (value.HasMember("X")&&value["X"].IsNumber())
         m_emptyVal.value.x = value["X"].GetFloat();
-    if (value.HasMember("Y")&&value["Y"].IsFloat())
+    if (value.HasMember("Y")&&value["Y"].IsNumber())
         m_emptyVal.value.y = value["Y"].GetFloat();
-    if (value.HasMember("Z")&&value["Z"].IsFloat())
+    if (value.HasMember("Z")&&value["Z"].IsNumber())
         m_emptyVal.value.z = value["Z"].GetFloat();
 }
 
@@ -184,13 +184,13 @@ void ImFlow::InPin<ColorVariable>::LoadEmptyValue(rapidjson::Value& value)
 {
     if (!value.IsObject())
         return;
-    if (value.HasMember("Red")&&value["Red"].IsFloat())
+    if (value.HasMember("Red")&&value["Red"].IsNumber())
         m_emptyVal.value.red = value["Red"].GetFloat();
-    if (value.HasMember("Green")&&value["Green"].IsFloat())
+    if (value.HasMember("Green")&&value["Green"].IsNumber())
         m_emptyVal.value.green = value["Green"].GetFloat();
-    if (value.HasMember("Blue")&&value["Blue"].IsFloat())
+    if (value.HasMember("Blue")&&value["Blue"].IsNumber())
         m_emptyVal.value.blue = value["Blue"].GetFloat();
-    if (value.HasMember("Alpha")&&value["Alpha"].IsFloat())
+    if (value.HasMember("Alpha")&&value["Alpha"].IsNumber())
         m_emptyVal.value.alpha = value["Alpha"].GetFloat();
 }
 
@@ -245,14 +245,16 @@ void ImFlow::InPin<TransformSize>::LoadEmptyValue(rapidjson::Value& value)
     if (!value.IsObject())
         return;
     float size[4];
-    if (value.HasMember("X")&&value["X"].IsFloat())
+    _mm_storeu_ps(size, m_emptyVal.size);
+    if (value.HasMember("X")&&value["X"].IsNumber())
         size[0] = value["X"].GetFloat();
-    if (value.HasMember("Y")&&value["Y"].IsFloat())
+    if (value.HasMember("Y")&&value["Y"].IsNumber())
         size[1] = value["Y"].GetFloat();
-    if (value.HasMember("Z")&&value["Z"].IsFloat())
+    if (value.HasMember("Z")&&value["Z"].IsNumber())
         size[2] = value["Z"].GetFloat();
-    if (value.HasMember("W")&&value["W"].IsFloat())
+    if (value.HasMember("W")&&value["W"].IsNumber())
         size[3] = value["W"].GetFloat();
+    m_emptyVal.size = _mm_loadu_ps(size);
 }
 
 template <>
@@ -378,7 +380,7 @@ void ImFlow::InPin<MathVariable>::drawNodeContent()
 template <>
 void ImFlow::InPin<MathVariable>::LoadEmptyValue(rapidjson::Value& value)
 {
-    if (!value.IsFloat())
+    if (!value.IsNumber())
         return;
     m_emptyVal.value = FloatVariable(value.GetFloat());
 }

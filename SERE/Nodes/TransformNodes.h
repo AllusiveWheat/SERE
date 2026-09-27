@@ -4,6 +4,18 @@
 #include "RuiRendering/RenderManager.h"
 
 
+class BuiltinTransformNode : public RuiBaseNode {
+public:
+    static inline std::string name = "Built-in Transform";
+    static inline std::string category = "Transform";
+    BuiltinTransformNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& styles);
+    BuiltinTransformNode(const std::shared_ptr<RenderInstance>& rend, ImFlow::StyleManager& styles,
+        rapidjson::GenericObject<false, rapidjson::Value> obj);
+    void Serialize(rapidjson::Value& obj, rapidjson::Document::AllocatorType& allocator) override;
+    void Export(RuiExportPrototype&) override {}
+    static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
+};
+
 class Transform0Node : public RuiBaseNode
 {
 public:
@@ -178,21 +190,6 @@ public:
 
 	explicit Transform11Node(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& styles);
 	explicit Transform11Node(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& styles, rapidjson::GenericObject<false,rapidjson::Value> obj);
-	void draw() override;
-	void Serialize(rapidjson::GenericValue<rapidjson::UTF8<>>& obj,rapidjson::Document::AllocatorType& allocator) override;
-	void Export(RuiExportPrototype& proto) override;
-
-	static std::vector<std::shared_ptr<ImFlow::PinProto>> GetPinInfo();
-};
-
-class Transform12Node : public RuiBaseNode
-{
-public:
-	static inline std::string name = "Transform 12";
-	static inline std::string category = "Transform";
-
-	explicit Transform12Node(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& styles);
-	explicit Transform12Node(const std::shared_ptr<RenderInstance>& rend,ImFlow::StyleManager& styles, rapidjson::GenericObject<false,rapidjson::Value> obj);
 	void draw() override;
 	void Serialize(rapidjson::GenericValue<rapidjson::UTF8<>>& obj,rapidjson::Document::AllocatorType& allocator) override;
 	void Export(RuiExportPrototype& proto) override;
